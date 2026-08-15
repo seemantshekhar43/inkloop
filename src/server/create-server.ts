@@ -1,6 +1,9 @@
 import http from "node:http";
+import { readFile } from "node:fs/promises";
 import type { ServerConfig } from "./config.js";
 import { isHostAllowed } from "./host-validation.js";
+import { readSessionRecordByHash } from "../shared/session-store.js";
+import { renderReviewShell } from "./review-shell.js";
 
 export interface InkloopServer {
   server: http.Server;
@@ -9,6 +12,8 @@ export interface InkloopServer {
   /** Stops the idle timer and closes the server. */
   close(): Promise<void>;
 }
+
+const SESSION_ROUTE = /^\/session\/([0-9a-f]{16})(\/artifact)?\/?$/;
 
 function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
@@ -19,6 +24,66 @@ function sendJson(res: http.ServerResponse, status: number, body: unknown): void
   res.end(payload);
 }
 
+function sendHtml(res: http.ServerResponse, status: number, html: string): void {
+  res.writeHead(status, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Content-Length": Buffer.byteLength(html),
+  });
+  res.end(html);
+}
+
+async function handleSessionRoute(
+  res: http.ServerResponse,
+  hash: string,
+  wantsArtifact: boolean,
+): Promise<void> {
+  // The hash is an opaque, server-chosen key (see readSessionRecordByHash's docstring) — there
+  // is no client-supplied filesystem path here, so this lookup carries no path-traversal risk
+  // even though it ultimately leads to a file read below.
+  const record = await readSessionRecordByHash(hash);
+  if (!record) {
+    sendJson(res, 404, { error: "session_not_found" });
+    return;
+  }
+
+  if (!wantsArtifact) {
+    sendHtml(res, 200, renderReviewShell(hash));
+    return;
+  }
+
+  let contents: Buffer;
+  try {
+    contents = await readFile(record.filePath);
+  } catch {
+    sendJson(res, 404, {
+      error: "artifact_not_found",
+      message: "The artifact file no longer exists on disk",
+    });
+    return;
+  }
+  res.writeHead(200, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Content-Length": contents.length,
+  });
+  res.end(contents);
+}
+
+async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  if (req.method === "GET" && req.url === "/health") {
+    sendJson(res, 200, { status: "ok", service: "inkloop" });
+    return;
+  }
+
+  const match = req.url ? SESSION_ROUTE.exec(req.url) : null;
+  if (req.method === "GET" && match) {
+    const [, hash, artifactSuffix] = match;
+    await handleSessionRoute(res, hash as string, Boolean(artifactSuffix));
+    return;
+  }
+
+  sendJson(res, 404, { error: "not_found" });
+}
+
 /**
  * Creates the loopback-bound HTTP server. Every request is checked against the Host header
  * (and X-Forwarded-Host, only when config.trustProxy is explicitly true, for deployments behind
@@ -27,9 +92,13 @@ function sendJson(res: http.ServerResponse, status: number, body: unknown): void
  * forbidden header for fetch/XHR, so any page's JS could set it and defeat the DNS-rebinding
  * defense if it were trusted unconditionally.
  *
- * Only route so far is GET /health; session routes land in later issues (#3, #4).
+ * Routes: GET /health, GET /session/:hash (review shell), GET /session/:hash/artifact (the
+ * artifact file itself). Feedback/poll routes land in issue #7.
  */
-export function createInkloopServer(config: ServerConfig, onIdleTimeout?: () => void): InkloopServer {
+export function createInkloopServer(
+  config: ServerConfig,
+  onIdleTimeout?: () => void,
+): InkloopServer {
   let lastActivity = Date.now();
 
   const server = http.createServer((req, res) => {
@@ -44,12 +113,12 @@ export function createInkloopServer(config: ServerConfig, onIdleTimeout?: () => 
       return;
     }
 
-    if (req.method === "GET" && req.url === "/health") {
-      sendJson(res, 200, { status: "ok" });
-      return;
-    }
-
-    sendJson(res, 404, { error: "not_found" });
+    handleRequest(req, res).catch((err: unknown) => {
+      process.stderr.write(
+        `[inkloop] request handler error: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
+      );
+      if (!res.headersSent) sendJson(res, 500, { error: "internal_error" });
+    });
   });
 
   let idleTimer: NodeJS.Timeout | undefined;

@@ -51,12 +51,12 @@ export function hashArtifactPath(absolutePath: string): string {
   return createHash("sha256").update(absolutePath).digest("hex").slice(0, 16);
 }
 
-export function sessionDir(absolutePath: string, stateRoot: string = defaultStateRoot()): string {
-  return path.join(stateRoot, hashArtifactPath(absolutePath));
+export function sessionDirByHash(hash: string, stateRoot: string = defaultStateRoot()): string {
+  return path.join(stateRoot, hash);
 }
 
-function sessionFilePath(absolutePath: string, stateRoot: string): string {
-  return path.join(sessionDir(absolutePath, stateRoot), "session.json");
+export function sessionDir(absolutePath: string, stateRoot: string = defaultStateRoot()): string {
+  return sessionDirByHash(hashArtifactPath(absolutePath), stateRoot);
 }
 
 function isNodeError(err: unknown): err is NodeJS.ErrnoException {
@@ -64,16 +64,17 @@ function isNodeError(err: unknown): err is NodeJS.ErrnoException {
 }
 
 /**
- * Reads the session record for an artifact path, or undefined if no session has ever been
- * opened for it. Throws SessionCorruptError rather than silently treating malformed state as
- * "no session" — a corrupt file masking as a fresh session could let a user-ended session be
- * silently reopened, which is a data-integrity concern worth failing loudly on.
+ * Reads a session record directly by its hash, without knowing the artifact path in advance.
+ * This is what lets the HTTP server serve `/session/<hash>/...` routes safely: the hash is an
+ * opaque key chosen server-side when the session was created, never a client-supplied filesystem
+ * path, so there is no path-traversal surface here even though it ultimately resolves to a file
+ * read (see create-server.ts's artifact route).
  */
-export async function readSessionRecord(
-  absolutePath: string,
+export async function readSessionRecordByHash(
+  hash: string,
   stateRoot: string = defaultStateRoot(),
 ): Promise<SessionRecord | undefined> {
-  const file = sessionFilePath(absolutePath, stateRoot);
+  const file = path.join(sessionDirByHash(hash, stateRoot), "session.json");
   let raw: string;
   try {
     raw = await readFile(file, "utf8");
@@ -86,6 +87,19 @@ export async function readSessionRecord(
   } catch (err) {
     throw new SessionCorruptError(file, err);
   }
+}
+
+/**
+ * Reads the session record for an artifact path, or undefined if no session has ever been
+ * opened for it. Throws SessionCorruptError rather than silently treating malformed state as
+ * "no session" — a corrupt file masking as a fresh session could let a user-ended session be
+ * silently reopened, which is a data-integrity concern worth failing loudly on.
+ */
+export async function readSessionRecord(
+  absolutePath: string,
+  stateRoot: string = defaultStateRoot(),
+): Promise<SessionRecord | undefined> {
+  return readSessionRecordByHash(hashArtifactPath(absolutePath), stateRoot);
 }
 
 /**
@@ -120,7 +134,12 @@ export async function openOrResumeSession(
   const now = new Date().toISOString();
 
   if (!existing) {
-    const record: SessionRecord = { filePath: absolutePath, status: "opened", createdAt: now, updatedAt: now };
+    const record: SessionRecord = {
+      filePath: absolutePath,
+      status: "opened",
+      createdAt: now,
+      updatedAt: now,
+    };
     await writeSessionRecordAtomic(record, stateRoot);
     return { outcome: "opened", record };
   }
