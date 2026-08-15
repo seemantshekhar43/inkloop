@@ -10,6 +10,7 @@ function baseConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
     port: 0, // OS-assigned ephemeral port, keeps tests parallel-safe
     allowedHosts: [],
     idleTimeoutMs: 0,
+    trustProxy: false,
     ...overrides,
   };
 }
@@ -59,8 +60,28 @@ void test("rejects a request with a disallowed Host header (403), before any rou
   }
 });
 
-void test("validates X-Forwarded-Host the same way when present", async () => {
+void test("ignores X-Forwarded-Host by default (trustProxy: false)", async () => {
   const instance = createInkloopServer(baseConfig());
+  const port = await instance.listening;
+  try {
+    const rejected = await request(port, "/health", {
+      host: "127.0.0.1",
+      "x-forwarded-host": "attacker.example",
+    });
+    assert.equal(rejected.status, 200); // x-forwarded-host ignored, real Host header is allowed
+
+    const stillRejected = await request(port, "/health", {
+      host: "attacker.example",
+      "x-forwarded-host": "127.0.0.1", // ignored: cannot be used to bypass Host validation
+    });
+    assert.equal(stillRejected.status, 403);
+  } finally {
+    await instance.close();
+  }
+});
+
+void test("validates X-Forwarded-Host instead of Host when trustProxy is true", async () => {
+  const instance = createInkloopServer(baseConfig({ trustProxy: true }));
   const port = await instance.listening;
   try {
     const rejected = await request(port, "/health", {
@@ -70,7 +91,7 @@ void test("validates X-Forwarded-Host the same way when present", async () => {
     assert.equal(rejected.status, 403);
 
     const allowed = await request(port, "/health", {
-      host: "attacker.example", // ignored: x-forwarded-host takes precedence when present
+      host: "attacker.example", // ignored: x-forwarded-host takes precedence when trustProxy is true
       "x-forwarded-host": "127.0.0.1",
     });
     assert.equal(allowed.status, 200);

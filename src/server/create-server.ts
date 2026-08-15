@@ -21,8 +21,11 @@ function sendJson(res: http.ServerResponse, status: number, body: unknown): void
 
 /**
  * Creates the loopback-bound HTTP server. Every request is checked against the Host header
- * (and X-Forwarded-Host, when present, for the reverse-proxy case documented in docs/plan.md)
- * before any route handling runs — see host-validation.ts for the DNS-rebinding rationale.
+ * (and X-Forwarded-Host, only when config.trustProxy is explicitly true, for deployments behind
+ * a trusted reverse proxy) before any route handling runs — see host-validation.ts for the
+ * DNS-rebinding rationale. X-Forwarded-Host is not trusted by default: unlike Host, it is not a
+ * forbidden header for fetch/XHR, so any page's JS could set it and defeat the DNS-rebinding
+ * defense if it were trusted unconditionally.
  *
  * Only route so far is GET /health; session routes land in later issues (#3, #4).
  */
@@ -33,7 +36,8 @@ export function createInkloopServer(config: ServerConfig, onIdleTimeout?: () => 
     lastActivity = Date.now();
 
     const forwardedHost = req.headers["x-forwarded-host"];
-    const hostToCheck = typeof forwardedHost === "string" ? forwardedHost : req.headers.host;
+    const hostToCheck =
+      config.trustProxy && typeof forwardedHost === "string" ? forwardedHost : req.headers.host;
 
     if (!isHostAllowed(hostToCheck, config)) {
       sendJson(res, 403, { error: "invalid_host", message: "Host header not allowed" });

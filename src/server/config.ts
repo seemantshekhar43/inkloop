@@ -15,6 +15,13 @@ export interface ServerConfig {
   allowedHosts: string[] | "*";
   /** Milliseconds of inactivity before the server self-stops. 0 disables the timeout. */
   idleTimeoutMs: number;
+  /**
+   * When true, X-Forwarded-Host is consulted (in addition to Host) for host validation, for
+   * deployments that sit behind a trusted reverse proxy. Defaults to false: a page's JS cannot
+   * override the real Host header but can freely set X-Forwarded-Host, so trusting it without an
+   * explicit opt-in would defeat the DNS-rebinding defense in host-validation.ts.
+   */
+  trustProxy: boolean;
 }
 
 const DEFAULT_PORT = 4879;
@@ -70,6 +77,7 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
     port: parsePort(env["INKLOOP_PORT"], DEFAULT_PORT),
     allowedHosts: parseAllowedHosts(env["INKLOOP_ALLOWED_HOSTS"]),
     idleTimeoutMs: parseIdleTimeout(env["INKLOOP_IDLE_TIMEOUT_MS"], DEFAULT_IDLE_TIMEOUT_MS),
+    trustProxy: env["INKLOOP_TRUST_PROXY"]?.trim().toLowerCase() === "true",
   };
 }
 
