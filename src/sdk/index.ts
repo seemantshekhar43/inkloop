@@ -43,7 +43,7 @@
   const queue: FeedbackItem[] = [];
 
   function postToParent(message: Record<string, unknown>): void {
-    window.parent.postMessage({ source: "inkloop-sdk", ...message }, "*");
+    window.parent.postMessage({ source: "inkloop-sdk", ...message }, window.location.origin);
   }
 
   function notifyQueueChanged(): void {
@@ -242,7 +242,7 @@
   // ---- postMessage bridge to the parent (review shell, issue #6) -------------------------
 
   window.addEventListener("message", (event) => {
-    if (event.source !== window.parent) return;
+    if (event.source !== window.parent || event.origin !== window.location.origin) return;
     const data = event.data as { type?: string; comment?: string } | undefined;
     if (!data || typeof data.type !== "string") return;
 
