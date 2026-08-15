@@ -4,8 +4,9 @@ A local-first CLI for human-AI collaboration on rendered HTML artifacts. An agen
 a human opens it in a browser UI to annotate specific elements or text ranges, feedback queues up, and the
 agent long-polls for it and iterates — no accounts, no cloud dependency in the core loop.
 
-**Status: `inkloop <file>` opens or resumes a session and serves the artifact (issue #4); poll/end and the
-real review UI are not implemented yet.** See [`docs/plan.md`](docs/plan.md)
+**Status: `inkloop <file>` opens or resumes a session and serves the artifact (issue #4), with the injected
+browser SDK (issue #5) and review UI shell (issue #6) driving annotation and queuing; `poll`/`end` are not
+implemented yet.** See [`docs/plan.md`](docs/plan.md)
 for the full prior-art study, v1 scope decision, naming rationale, and tech stack proposal.
 
 ## Why
