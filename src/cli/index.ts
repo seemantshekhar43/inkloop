@@ -44,7 +44,9 @@ export async function run(argv: readonly string[]): Promise<number> {
 
   const notYetImplementedUrl = NOT_YET_IMPLEMENTED[first];
   if (notYetImplementedUrl) {
-    process.stderr.write(`inkloop: "${first}" is not implemented yet — tracked at ${notYetImplementedUrl}\n`);
+    process.stderr.write(
+      `inkloop: "${first}" is not implemented yet — tracked at ${notYetImplementedUrl}\n`,
+    );
     return 1;
   }
 
@@ -65,7 +67,9 @@ if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
       process.exitCode = code;
     })
     .catch((err: unknown) => {
-      process.stderr.write(`inkloop: unexpected error: ${err instanceof Error ? err.message : String(err)}\n`);
+      process.stderr.write(
+        `inkloop: unexpected error: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
       process.exitCode = 1;
     });
 }

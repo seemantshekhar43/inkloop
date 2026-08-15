@@ -63,7 +63,9 @@ void test("end is recognized but reports not-yet-implemented with a tracking lin
 void test("a bare non-flag argument is routed to the open command", async () => {
   // No such file exists — proves routing happens (open command's own errors are unit-tested
   // separately in commands/open.test.ts), not that opening succeeds.
-  const { code, text } = await captureWrite(process.stderr, () => run(["/nonexistent/artifact.html"]));
+  const { code, text } = await captureWrite(process.stderr, () =>
+    run(["/nonexistent/artifact.html"]),
+  );
   assert.equal(code, 1);
   assert.match(text, /file not found/);
 });

@@ -19,7 +19,10 @@ function linkableHost(host: string): string {
  * server is running to serve it, and print the session URL. Returns the process exit code
  * rather than calling process.exit() directly, so it stays testable.
  */
-export async function runOpenCommand(filePathArg: string, options: OpenCommandOptions = {}): Promise<number> {
+export async function runOpenCommand(
+  filePathArg: string,
+  options: OpenCommandOptions = {},
+): Promise<number> {
   const cwd = options.cwd ?? process.cwd();
   const reopen = options.reopen ?? false;
   const absolutePath = resolveArtifactPath(filePathArg, cwd);

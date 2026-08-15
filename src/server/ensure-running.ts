@@ -84,5 +84,7 @@ export async function ensureServerRunning(config: ServerConfig): Promise<void> {
     if (await checkHealth(config)) return;
     await sleep(100);
   }
-  throw new Error(`inkloop server did not become healthy at ${config.host}:${config.port} within 5s`);
+  throw new Error(
+    `inkloop server did not become healthy at ${config.host}:${config.port} within 5s`,
+  );
 }

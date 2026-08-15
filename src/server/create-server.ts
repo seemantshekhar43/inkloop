@@ -95,7 +95,10 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
  * Routes: GET /health, GET /session/:hash (review shell), GET /session/:hash/artifact (the
  * artifact file itself). Feedback/poll routes land in issue #7.
  */
-export function createInkloopServer(config: ServerConfig, onIdleTimeout?: () => void): InkloopServer {
+export function createInkloopServer(
+  config: ServerConfig,
+  onIdleTimeout?: () => void,
+): InkloopServer {
   let lastActivity = Date.now();
 
   const server = http.createServer((req, res) => {
@@ -111,7 +114,9 @@ export function createInkloopServer(config: ServerConfig, onIdleTimeout?: () => 
     }
 
     handleRequest(req, res).catch((err: unknown) => {
-      process.stderr.write(`[inkloop] request handler error: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
+      process.stderr.write(
+        `[inkloop] request handler error: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
+      );
       if (!res.headersSent) sendJson(res, 500, { error: "internal_error" });
     });
   });

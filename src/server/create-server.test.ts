@@ -25,16 +25,16 @@ function request(
   headers: Record<string, string> = {},
 ): Promise<{ status: number; body: unknown }> {
   return new Promise((resolve, reject) => {
-    const req = http.request(
-      { host: "127.0.0.1", port, path, method: "GET", headers },
-      (res) => {
-        let raw = "";
-        res.on("data", (chunk: Buffer) => (raw += chunk.toString()));
-        res.on("end", () => {
-          resolve({ status: res.statusCode ?? 0, body: raw ? (JSON.parse(raw) as unknown) : undefined });
+    const req = http.request({ host: "127.0.0.1", port, path, method: "GET", headers }, (res) => {
+      let raw = "";
+      res.on("data", (chunk: Buffer) => (raw += chunk.toString()));
+      res.on("end", () => {
+        resolve({
+          status: res.statusCode ?? 0,
+          body: raw ? (JSON.parse(raw) as unknown) : undefined,
         });
-      },
-    );
+      });
+    });
     req.on("error", reject);
     req.end();
   });
@@ -121,11 +121,14 @@ function requestRaw(
   headers: Record<string, string> = {},
 ): Promise<{ status: number; body: string }> {
   return new Promise((resolve, reject) => {
-    const req = http.request({ host: "127.0.0.1", port, path: urlPath, method: "GET", headers }, (res) => {
-      let body = "";
-      res.on("data", (chunk: Buffer) => (body += chunk.toString()));
-      res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
-    });
+    const req = http.request(
+      { host: "127.0.0.1", port, path: urlPath, method: "GET", headers },
+      (res) => {
+        let body = "";
+        res.on("data", (chunk: Buffer) => (body += chunk.toString()));
+        res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
+      },
+    );
     req.on("error", reject);
     req.end();
   });
@@ -160,7 +163,9 @@ void test("session routes: shell, artifact content, unknown session, and a delet
     assert.equal(unknown.status, 404);
 
     await rm(record.filePath);
-    const missingArtifact = await requestRaw(port, `/session/${hash}/artifact`, { host: "127.0.0.1" });
+    const missingArtifact = await requestRaw(port, `/session/${hash}/artifact`, {
+      host: "127.0.0.1",
+    });
     assert.equal(missingArtifact.status, 404);
   } finally {
     await instance.close();

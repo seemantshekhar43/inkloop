@@ -134,7 +134,12 @@ export async function openOrResumeSession(
   const now = new Date().toISOString();
 
   if (!existing) {
-    const record: SessionRecord = { filePath: absolutePath, status: "opened", createdAt: now, updatedAt: now };
+    const record: SessionRecord = {
+      filePath: absolutePath,
+      status: "opened",
+      createdAt: now,
+      updatedAt: now,
+    };
     await writeSessionRecordAtomic(record, stateRoot);
     return { outcome: "opened", record };
   }
