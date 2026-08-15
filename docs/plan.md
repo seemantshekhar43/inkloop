@@ -93,8 +93,12 @@ bundled together) rather than split packages — one install surface, one versio
 | **Long-poll transport** | Plain HTTP long-poll, bounded to ~30s per request, CLI re-issues automatically | No WebSocket dependency — each `poll` call is a discrete agent-process invocation anyway, so a persistent socket buys nothing. |
 | **Session / state persistence** | Flat JSON files under `~/.inkloop/<hash-of-absolute-path>/` | Single local user, low write concurrency — SQLite would be a dependency with no payoff at this scale. Revisit only if drift detection needs indexed lookups. |
 
-## 6. Open questions
+## 6. Decisions closed after review
 
-- License — MIT (matches lavish-axi) or something else?
-- `inkloop.dev` / `.app` domain confirmation, and a GitHub org handle (exact `inkloop` username is taken by
-  an unrelated individual) — resolve before registering anything.
+- **License:** MIT.
+- **Domain / hosting:** no standalone `inkloop.dev`/`.app` domain — this deploys under the personal site,
+  [shekse.com](https://shekse.com), instead. GitHub org handle (exact `inkloop` username is taken by an
+  unrelated individual) is not a blocker since there's no domain purchase riding on it; use a personal
+  namespace or a close variant when creating the public-facing repo.
+
+No open questions remain from the research phase.

@@ -43,5 +43,4 @@ complex pieces — see [`docs/plan.md`](docs/plan.md) for the reasoning.
 
 ## License
 
-Not yet decided — MIT is the leading candidate (matches the closest prior art, `lavish-axi`). Tracked as
-an open item in [`docs/plan.md`](docs/plan.md).
+MIT — see [`LICENSE`](LICENSE).
