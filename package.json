@@ -19,10 +19,10 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && tsc -p src/sdk/tsconfig.json",
     "dev": "tsx src/cli/index.ts",
     "lint": "eslint .",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p src/sdk/tsconfig.json --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\"",
     "check": "npm run lint && npm run typecheck && npm run test"
   },

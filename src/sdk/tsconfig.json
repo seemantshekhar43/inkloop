@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "None",
+    "moduleResolution": "Node10",
+    "moduleDetection": "legacy",
+    "lib": ["ES2022", "DOM"],
+    "types": [],
+    "rootDir": ".",
+    "outDir": "../../dist/sdk",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["."],
+  "exclude": ["*.test.ts"]
+}
