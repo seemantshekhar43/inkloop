@@ -63,6 +63,15 @@
     notifyQueueChanged();
   }
 
+  /** Removes a queued-but-unsent item by id, requested by the review shell's pill "×" control
+   * (issue #18). No-ops silently if the id is already gone (e.g. a stale click after Send). */
+  function removeQueueItem(id: string): void {
+    const index = queue.findIndex((item) => item.id === id);
+    if (index === -1) return;
+    queue.splice(index, 1);
+    notifyQueueChanged();
+  }
+
   /**
    * Builds a stable-enough CSS selector path for an element: a chain of tag+nth-of-type from the
    * element up to (but not including) <html>, preferring an id segment when one is present since
@@ -172,6 +181,21 @@
 
   let pickingElement = false;
 
+  /**
+   * Toggles picking mode and its visible side effects: a crosshair cursor on the artifact so
+   * it's obvious a click will select rather than click through, and — since picking mode also
+   * turns itself off the moment an element is picked, not just on an explicit toggle — a
+   * postMessage telling the review shell the real current state. The shell used to guess this
+   * optimistically from its own toggle button clicks alone, which drifted out of sync as soon as
+   * a pick completed (issue #18).
+   */
+  function setPickingElement(value: boolean): void {
+    pickingElement = value;
+    document.documentElement.style.cursor = value ? "crosshair" : "";
+    if (!value) highlight.classList.add("inkloop-hidden");
+    postToParent({ type: "inkloop:picking", active: value });
+  }
+
   function isSdkNode(el: EventTarget | null): boolean {
     return el === host || (el instanceof Node && host.contains(el));
   }
@@ -203,8 +227,7 @@
       if (!(target instanceof Element) || isSdkNode(target)) return;
       event.preventDefault();
       event.stopPropagation();
-      pickingElement = false;
-      highlight.classList.add("inkloop-hidden");
+      setPickingElement(false);
       showComposerAt(event.clientX, event.clientY, { kind: "element", selector: buildSelector(target) });
     },
     { capture: true },
@@ -243,16 +266,18 @@
 
   window.addEventListener("message", (event) => {
     if (event.source !== window.parent || event.origin !== window.location.origin) return;
-    const data = event.data as { type?: string; comment?: string } | undefined;
+    const data = event.data as { type?: string; comment?: string; id?: string } | undefined;
     if (!data || typeof data.type !== "string") return;
 
     switch (data.type) {
       case "inkloop:toggle-element-picker":
-        pickingElement = !pickingElement;
-        if (!pickingElement) highlight.classList.add("inkloop-hidden");
+        setPickingElement(!pickingElement);
         break;
       case "inkloop:add-comment":
         if (typeof data.comment === "string") queueItem({ kind: "general" }, data.comment);
+        break;
+      case "inkloop:remove":
+        if (typeof data.id === "string") removeQueueItem(data.id);
         break;
       case "inkloop:send":
         void sendQueue();
@@ -263,7 +288,10 @@
   });
 
   async function sendQueue(): Promise<void> {
-    if (queue.length === 0) return;
+    if (queue.length === 0) {
+      postToParent({ type: "inkloop:sent" });
+      return;
+    }
     try {
       const response = await fetch(`/session/${sessionHash}/feedback`, {
         method: "POST",
