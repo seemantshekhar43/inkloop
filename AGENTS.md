@@ -24,6 +24,10 @@ starting on any issue — most design questions are already answered there.
 - **The injected browser SDK must never leak into the saved artifact.** It's injected at serve time only;
   opening the saved `.html` file directly (no inkloop server running) must render identically. Isolate any
   injected UI chrome (shadow DOM) so it can't collide with the artifact's own styles/scripts.
+- **Visual novelty in the review UI.** The browser-side review chrome and the injected SDK's on-page
+  affordances must not visually resemble existing tools in this space (lavish-axi, sidenote-cli,
+  Percy/Chromatic reviewers). Don't default to a generic annotation-sidebar look — this needs its own
+  layout, typography, and interaction direction. Applies to issues #5 and #6.
 - **Portability of the core loop over new features.** If a change would complicate the open → annotate →
   queue → poll → revise → reload loop to make room for something else, it belongs in a v2 issue, not v1.
   Layout/QA detection and Mermaid editing are explicitly deferred — see `docs/plan.md` §3.
