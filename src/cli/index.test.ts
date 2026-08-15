@@ -4,10 +4,10 @@ import { run } from "./index.js";
 
 type WriteFn = typeof process.stdout.write;
 
-function captureWrite(
+async function captureWrite(
   stream: NodeJS.WriteStream,
-  fn: () => number,
-): { code: number; text: string } {
+  fn: () => Promise<number>,
+): Promise<{ code: number; text: string }> {
   const original: WriteFn = stream.write.bind(stream);
   let text = "";
   stream.write = (chunk: Uint8Array | string) => {
@@ -15,33 +15,55 @@ function captureWrite(
     return true;
   };
   try {
-    const code = fn();
+    const code = await fn();
     return { code, text };
   } finally {
     stream.write = original;
   }
 }
 
-void test("--version prints the package version and exits 0", () => {
-  const { code, text } = captureWrite(process.stdout, () => run(["--version"]));
+void test("--version prints the package version and exits 0", async () => {
+  const { code, text } = await captureWrite(process.stdout, () => run(["--version"]));
   assert.equal(code, 0);
   assert.match(text.trim(), /^\d+\.\d+\.\d+$/);
 });
 
-void test("--help prints usage and exits 0", () => {
-  const { code, text } = captureWrite(process.stdout, () => run(["--help"]));
+void test("--help prints usage and exits 0", async () => {
+  const { code, text } = await captureWrite(process.stdout, () => run(["--help"]));
   assert.equal(code, 0);
   assert.match(text, /Usage:/);
 });
 
-void test("no arguments prints usage and exits 1", () => {
-  const { code, text } = captureWrite(process.stdout, () => run([]));
+void test("no arguments prints usage and exits 1", async () => {
+  const { code, text } = await captureWrite(process.stdout, () => run([]));
   assert.equal(code, 1);
   assert.match(text, /Usage:/);
 });
 
-void test("unrecognized command exits 1 and explains on stderr", () => {
-  const { code, text } = captureWrite(process.stderr, () => run(["bogus"]));
+void test("an unrecognized flag exits 1 and explains on stderr", async () => {
+  const { code, text } = await captureWrite(process.stderr, () => run(["--bogus"]));
   assert.equal(code, 1);
-  assert.match(text, /unrecognized command/);
+  assert.match(text, /unrecognized flag/);
+});
+
+void test("poll is recognized but reports not-yet-implemented with a tracking link", async () => {
+  const { code, text } = await captureWrite(process.stderr, () => run(["poll", "file.html"]));
+  assert.equal(code, 1);
+  assert.match(text, /not implemented yet/);
+  assert.match(text, /issues\/7/);
+});
+
+void test("end is recognized but reports not-yet-implemented with a tracking link", async () => {
+  const { code, text } = await captureWrite(process.stderr, () => run(["end", "file.html"]));
+  assert.equal(code, 1);
+  assert.match(text, /not implemented yet/);
+  assert.match(text, /issues\/9/);
+});
+
+void test("a bare non-flag argument is routed to the open command", async () => {
+  // No such file exists — proves routing happens (open command's own errors are unit-tested
+  // separately in commands/open.test.ts), not that opening succeeds.
+  const { code, text } = await captureWrite(process.stderr, () => run(["/nonexistent/artifact.html"]));
+  assert.equal(code, 1);
+  assert.match(text, /file not found/);
 });

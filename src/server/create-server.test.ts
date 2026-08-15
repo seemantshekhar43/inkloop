@@ -1,8 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { createInkloopServer } from "./create-server.js";
 import type { ServerConfig } from "./config.js";
+import { hashArtifactPath, openOrResumeSession } from "../shared/session-store.js";
 
 function baseConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
   return {
@@ -42,7 +46,7 @@ void test("GET /health returns 200 with an allowed Host header", async () => {
   try {
     const { status, body } = await request(port, "/health", { host: "127.0.0.1" });
     assert.equal(status, 200);
-    assert.deepEqual(body, { status: "ok" });
+    assert.deepEqual(body, { status: "ok", service: "inkloop" });
   } finally {
     await instance.close();
   }
@@ -108,6 +112,61 @@ void test("unknown routes return 404", async () => {
     assert.equal(status, 404);
   } finally {
     await instance.close();
+  }
+});
+
+function requestRaw(
+  port: number,
+  urlPath: string,
+  headers: Record<string, string> = {},
+): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: "127.0.0.1", port, path: urlPath, method: "GET", headers }, (res) => {
+      let body = "";
+      res.on("data", (chunk: Buffer) => (body += chunk.toString()));
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, body }));
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+void test("session routes: shell, artifact content, unknown session, and a deleted artifact file", async () => {
+  const stateRoot = await mkdtemp(path.join(os.tmpdir(), "inkloop-create-server-test-"));
+  const artifactDir = await mkdtemp(path.join(os.tmpdir(), "inkloop-create-server-test-artifact-"));
+  const originalStateDir = process.env["INKLOOP_STATE_DIR"];
+  process.env["INKLOOP_STATE_DIR"] = stateRoot; // create-server always reads the env default
+
+  const artifactPath = path.join(artifactDir, "artifact.html");
+  await writeFile(artifactPath, "<p>real artifact content</p>", "utf8");
+
+  const instance = createInkloopServer(baseConfig());
+  const port = await instance.listening;
+  try {
+    const { record } = await openOrResumeSession(artifactPath);
+    const hash = hashArtifactPath(artifactPath);
+
+    const shell = await requestRaw(port, `/session/${hash}`, { host: "127.0.0.1" });
+    assert.equal(shell.status, 200);
+    assert.match(shell.body, /<iframe/);
+    assert.match(shell.body, new RegExp(`/session/${hash}/artifact`));
+
+    const artifact = await requestRaw(port, `/session/${hash}/artifact`, { host: "127.0.0.1" });
+    assert.equal(artifact.status, 200);
+    assert.match(artifact.body, /real artifact content/);
+
+    const unknownHash = "0".repeat(16);
+    const unknown = await requestRaw(port, `/session/${unknownHash}`, { host: "127.0.0.1" });
+    assert.equal(unknown.status, 404);
+
+    await rm(record.filePath);
+    const missingArtifact = await requestRaw(port, `/session/${hash}/artifact`, { host: "127.0.0.1" });
+    assert.equal(missingArtifact.status, 404);
+  } finally {
+    await instance.close();
+    process.env["INKLOOP_STATE_DIR"] = originalStateDir;
+    await rm(stateRoot, { recursive: true, force: true });
+    await rm(artifactDir, { recursive: true, force: true });
   }
 });
 
