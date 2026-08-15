@@ -22,10 +22,15 @@ export interface ServerConfig {
    * explicit opt-in would defeat the DNS-rebinding defense in host-validation.ts.
    */
   trustProxy: boolean;
+  /** Milliseconds a single GET /session/:hash/poll request blocks for before returning an empty
+   * result. The CLI's `inkloop poll` re-issues automatically on an empty result, so this bounds
+   * how long any one HTTP request stays open rather than how long the agent actually waits. */
+  pollTimeoutMs: number;
 }
 
 const DEFAULT_PORT = 4879;
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
+const DEFAULT_POLL_TIMEOUT_MS = 30 * 1000;
 const LOOPBACK_BIND_ADDRESSES = new Set(["127.0.0.1", "::1", "localhost"]);
 const WILDCARD_BIND_ADDRESSES = new Set(["0.0.0.0", "::", "0000:0000:0000:0000:0000:0000:0000:0000"]);
 
@@ -44,6 +49,15 @@ function parseIdleTimeout(value: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isInteger(parsed) || parsed < 0) {
     throw new Error(`Invalid idle timeout "${value}": must be a non-negative integer or "off"`);
+  }
+  return parsed;
+}
+
+function parsePollTimeout(value: string | undefined, fallback: number): number {
+  if (value === undefined || value === "") return fallback;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`Invalid poll timeout "${value}": must be a positive integer`);
   }
   return parsed;
 }
@@ -78,6 +92,7 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerCo
     allowedHosts: parseAllowedHosts(env["INKLOOP_ALLOWED_HOSTS"]),
     idleTimeoutMs: parseIdleTimeout(env["INKLOOP_IDLE_TIMEOUT_MS"], DEFAULT_IDLE_TIMEOUT_MS),
     trustProxy: env["INKLOOP_TRUST_PROXY"]?.trim().toLowerCase() === "true",
+    pollTimeoutMs: parsePollTimeout(env["INKLOOP_POLL_TIMEOUT_MS"], DEFAULT_POLL_TIMEOUT_MS),
   };
 }
 

@@ -25,6 +25,14 @@ export interface FeedbackItem {
   comment: string;
   /** ISO-8601 timestamp, set by the SDK when the item was queued. */
   createdAt: string;
+  /**
+   * ISO-8601 timestamp set server-side (never by the client) once an `inkloop poll` call has
+   * delivered this item to the agent. Undefined means still pending. See
+   * shared/feedback-store.ts's takePendingFeedback — this is what lets poll return only items
+   * the agent hasn't already seen, while still keeping delivered items on disk for history
+   * (issue #21) instead of deleting them.
+   */
+  deliveredAt?: string;
 }
 
 /** Hard caps enforced on inbound feedback batches — an unauthenticated local server still

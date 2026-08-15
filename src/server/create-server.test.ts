@@ -8,7 +8,8 @@ import path from "node:path";
 import { createInkloopServer } from "./create-server.js";
 import type { ServerConfig } from "./config.js";
 import { hashArtifactPath, openOrResumeSession } from "../shared/session-store.js";
-import { readFeedback } from "../shared/feedback-store.js";
+import { appendFeedback, readFeedback } from "../shared/feedback-store.js";
+import { readAgentReplies } from "../shared/agent-reply-store.js";
 
 function baseConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
   return {
@@ -17,6 +18,7 @@ function baseConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
     allowedHosts: [],
     idleTimeoutMs: 0,
     trustProxy: false,
+    pollTimeoutMs: 30_000,
     ...overrides,
   };
 }
@@ -357,6 +359,139 @@ void test("feedback route: rejects malformed JSON, invalid batch shapes, and ove
 
     // Confirm nothing from the rejected requests made it to disk.
     assert.deepEqual(await readFeedback(hash, stateRoot), []);
+  } finally {
+    await instance.close();
+    process.env["INKLOOP_STATE_DIR"] = originalStateDir;
+    await rm(stateRoot, { recursive: true, force: true });
+    await rm(artifactDir, { recursive: true, force: true });
+  }
+});
+
+void test("poll route: returns immediately when feedback is already queued, and empty items on timeout", async () => {
+  const stateRoot = await mkdtemp(path.join(os.tmpdir(), "inkloop-poll-route-test-"));
+  const artifactDir = await mkdtemp(path.join(os.tmpdir(), "inkloop-poll-route-artifact-"));
+  const originalStateDir = process.env["INKLOOP_STATE_DIR"];
+  process.env["INKLOOP_STATE_DIR"] = stateRoot;
+
+  const artifactPath = path.join(artifactDir, "artifact.html");
+  await writeFile(artifactPath, "<p>hi</p>", "utf8");
+
+  // Short pollTimeoutMs so the timeout branch below doesn't slow the suite down.
+  const instance = createInkloopServer(baseConfig({ pollTimeoutMs: 200 }));
+  const port = await instance.listening;
+  try {
+    await openOrResumeSession(artifactPath);
+    const hash = hashArtifactPath(artifactPath);
+
+    await appendFeedback(hash, [
+      {
+        id: "item-1",
+        target: { kind: "general" },
+        comment: "already queued",
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+
+    const start = Date.now();
+    const withItems = await request(port, `/session/${hash}/poll`, { host: "127.0.0.1" });
+    assert.equal(withItems.status, 200);
+    assert.ok(Date.now() - start < 200); // returned promptly, not after waiting out the timeout
+    const body = withItems.body as { items: Array<{ id: string; deliveredAt?: string }> };
+    assert.equal(body.items.length, 1);
+    assert.equal(body.items[0]?.id, "item-1");
+    assert.ok(body.items[0]?.deliveredAt);
+
+    // Already delivered — a second poll times out empty instead of redelivering it.
+    const timedOut = await request(port, `/session/${hash}/poll`, { host: "127.0.0.1" });
+    assert.equal(timedOut.status, 200);
+    assert.deepEqual(timedOut.body, { items: [] });
+
+    const unknownHash = "0".repeat(16);
+    const missing = await request(port, `/session/${unknownHash}/poll`, { host: "127.0.0.1" });
+    assert.equal(missing.status, 404);
+  } finally {
+    await instance.close();
+    process.env["INKLOOP_STATE_DIR"] = originalStateDir;
+    await rm(stateRoot, { recursive: true, force: true });
+    await rm(artifactDir, { recursive: true, force: true });
+  }
+});
+
+void test("poll route: a feedback POST that arrives mid-wait is picked up before the timeout", async () => {
+  const stateRoot = await mkdtemp(path.join(os.tmpdir(), "inkloop-poll-midwait-test-"));
+  const artifactDir = await mkdtemp(path.join(os.tmpdir(), "inkloop-poll-midwait-artifact-"));
+  const originalStateDir = process.env["INKLOOP_STATE_DIR"];
+  process.env["INKLOOP_STATE_DIR"] = stateRoot;
+
+  const artifactPath = path.join(artifactDir, "artifact.html");
+  await writeFile(artifactPath, "<p>hi</p>", "utf8");
+
+  const instance = createInkloopServer(baseConfig({ pollTimeoutMs: 3000 }));
+  const port = await instance.listening;
+  try {
+    await openOrResumeSession(artifactPath);
+    const hash = hashArtifactPath(artifactPath);
+
+    const pollPromise = request(port, `/session/${hash}/poll`, { host: "127.0.0.1" });
+    setTimeout(() => {
+      void postJson(port, `/session/${hash}/feedback`, [
+        {
+          id: "late-item",
+          target: { kind: "general" },
+          comment: "arrived mid-wait",
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+    }, 400);
+
+    const start = Date.now();
+    const { status, body } = await pollPromise;
+    assert.equal(status, 200);
+    assert.ok(Date.now() - start < 3000); // picked up well before the 3s timeout
+    const items = (body as { items: Array<{ id: string }> }).items;
+    assert.deepEqual(
+      items.map((i) => i.id),
+      ["late-item"],
+    );
+  } finally {
+    await instance.close();
+    process.env["INKLOOP_STATE_DIR"] = originalStateDir;
+    await rm(stateRoot, { recursive: true, force: true });
+    await rm(artifactDir, { recursive: true, force: true });
+  }
+});
+
+void test("agent-reply route: valid message is accepted and persisted, unknown session 404s, invalid message 400s", async () => {
+  const stateRoot = await mkdtemp(path.join(os.tmpdir(), "inkloop-agent-reply-route-test-"));
+  const artifactDir = await mkdtemp(path.join(os.tmpdir(), "inkloop-agent-reply-route-artifact-"));
+  const originalStateDir = process.env["INKLOOP_STATE_DIR"];
+  process.env["INKLOOP_STATE_DIR"] = stateRoot;
+
+  const artifactPath = path.join(artifactDir, "artifact.html");
+  await writeFile(artifactPath, "<p>hi</p>", "utf8");
+
+  const instance = createInkloopServer(baseConfig());
+  const port = await instance.listening;
+  try {
+    await openOrResumeSession(artifactPath);
+    const hash = hashArtifactPath(artifactPath);
+
+    const { status, body } = await postJson(port, `/session/${hash}/agent-reply`, {
+      message: "revised the layout per feedback",
+    });
+    assert.equal(status, 201);
+    assert.equal((body as { reply: { message: string } }).reply.message, "revised the layout per feedback");
+
+    const stored = await readAgentReplies(hash, stateRoot);
+    assert.equal(stored.length, 1);
+    assert.equal(stored[0]?.message, "revised the layout per feedback");
+
+    const invalid = await postJson(port, `/session/${hash}/agent-reply`, { message: "  " });
+    assert.equal(invalid.status, 400);
+
+    const unknownHash = "0".repeat(16);
+    const missing = await postJson(port, `/session/${unknownHash}/agent-reply`, { message: "hi" });
+    assert.equal(missing.status, 404);
   } finally {
     await instance.close();
     process.env["INKLOOP_STATE_DIR"] = originalStateDir;
