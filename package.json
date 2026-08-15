@@ -23,7 +23,7 @@
     "dev": "tsx src/cli/index.ts",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test src/**/*.test.ts",
+    "test": "tsx --test \"src/**/*.test.ts\"",
     "check": "npm run lint && npm run typecheck && npm run test"
   },
   "devDependencies": {
