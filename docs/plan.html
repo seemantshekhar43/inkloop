@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="luxury">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inkloop — Research &amp; Plan</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :where(.grid, .flex) > * { min-width: 0; }
+  :where(p, h1, h2, h3, h4, li, dd, blockquote, td, th, .badge) { overflow-wrap: anywhere; }
+  :where(img, svg) { max-width: 100%; height: auto; }
+</style>
+<style type="text/tailwindcss">
+  @theme {
+    --font-mono: "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+</style>
+</head>
+<body class="bg-base-100 text-base-content">
+<main class="mx-auto max-w-6xl p-6 lg:p-10 space-y-12">
+
+  <!-- HERO -->
+  <section class="hero bg-base-200 rounded-box">
+    <div class="hero-content flex-col text-left py-10">
+      <div class="badge badge-warning badge-soft mb-3">Research &amp; planning only — no code written yet</div>
+      <div class="badge badge-primary badge-soft mb-3 ml-2">Working name: inkloop</div>
+      <h1 class="text-4xl lg:text-5xl font-bold">A local-first review loop for agent-written HTML</h1>
+      <p class="py-4 max-w-3xl opacity-80">
+        Goal: a CLI + browser UI where an agent writes an HTML artifact, a human annotates specific elements or
+        text ranges, feedback queues up, and the agent long-polls for it and iterates — no accounts, no cloud
+        dependency in the core loop. Closest prior art is <span class="font-mono">lavish-axi</span>, which already
+        does this well. This document is the prior-art study, scope call, naming check, and stack proposal —
+        annotate anything you want changed before implementation starts.
+      </p>
+      <div class="flex flex-wrap gap-2">
+        <span class="badge badge-outline">Prior art</span>
+        <span class="badge badge-outline">v1 scope</span>
+        <span class="badge badge-outline">Naming</span>
+        <span class="badge badge-outline">Tech stack</span>
+        <span class="badge badge-outline">Open questions</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 1. PRIOR ART -->
+  <section>
+    <h2 class="text-2xl font-bold mb-1">1. Prior art deep-dive</h2>
+    <p class="opacity-70 mb-4">lavish-axi is the closest and most mature comparable. It already solves the core loop end to end.</p>
+
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+      <table class="table table-zebra">
+        <thead>
+          <tr>
+            <th>Capability</th>
+            <th>lavish-axi</th>
+            <th>sidenote-cli (bharadwaj-pendyala)</th>
+            <th>Percy / Chromatic</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-semibold">Core loop</td>
+            <td>Open → annotate → queue → <span class="font-mono text-xs">poll</span> long-poll → agent revises → live reload with scroll/state preservation. File-path-keyed sessions, no accounts.</td>
+            <td>Same shape, scoped to <em>markdown</em> sites via a remark plugin that stamps source offsets; daemon resolves comments into git diffs.</td>
+            <td>CI-triggered screenshot diffing against a hosted baseline; review happens on a hosted dashboard, not local-first.</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Annotation granularity</td>
+            <td>Element and text-range selection, native form controls, custom <span class="font-mono text-xs">data-lavish-action</span> hooks.</td>
+            <td>Text-range selection on rendered markdown blocks, pinned to a comment rail.</td>
+            <td>Bounding-box diffs on rendered screenshots — no arbitrary element/text targeting.</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Diagram editing</td>
+            <td>Mermaid diagrams become editable Excalidraw whiteboards inline.</td>
+            <td>None.</td>
+            <td>None.</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Layout/QA detection</td>
+            <td>Passive post-render audit (overflow, clipped text, unreachable controls) with a stateful issue inbox (open/queued/resolved/returned) and fingerprint-based de-duplication.</td>
+            <td>None — drift detection only (refuses to edit passages whose source changed since commenting).</td>
+            <td>Pixel/DOM diffing is the whole product, but it's regression-diff, not live-authoring QA.</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Security posture</td>
+            <td>Loopback-only bind by default, Host-header validation against DNS rebinding, size-capped attachments, redacted <span class="font-mono text-xs">file://</span> paths on export.</td>
+            <td>Localhost daemon; no published rebinding/host-validation posture found.</td>
+            <td>Hosted SaaS — different trust model entirely (accounts, tokens).</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Local-first / no cloud in core loop</td>
+            <td>Yes — sharing to ht-ml.app is explicit opt-in, separate command.</td>
+            <td>Yes — agent API calls are the only network dependency.</td>
+            <td>No — hosted by design.</td>
+          </tr>
+          <tr>
+            <td class="font-semibold">Maturity</td>
+            <td>~1,200 GitHub stars, published npm package, active.</td>
+            <td>3 stars, 17 commits, early-stage (published July 2026).</td>
+            <td>Established commercial products.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-4 mt-5">
+      <div class="alert alert-success alert-soft items-start">
+        <div>
+          <div class="font-semibold mb-1">Already solved well (don't re-invent)</div>
+          <ul class="list-disc list-inside text-sm space-y-1">
+            <li>File-path-keyed sessions with no-account, long-poll agent ergonomics</li>
+            <li>Host-header / DNS-rebinding defense on a loopback-bound local server</li>
+            <li>Live reload that preserves iframe scroll and in-progress annotation text</li>
+            <li>Portable artifacts — SDK injection never leaks into the saved HTML</li>
+          </ul>
+        </div>
+      </div>
+      <div class="alert alert-warning alert-soft items-start">
+        <div>
+          <div class="font-semibold mb-1">Real gaps / room to differentiate</div>
+          <ul class="list-disc list-inside text-sm space-y-1">
+            <li>Every comparable tool bolts diagram-editing and QA-detection onto the core loop — nothing offers a genuinely <em>minimal</em>, fast-install core loop as the whole product</li>
+            <li>None publish a documented on-disk session schema an agent could reason about without shelling out</li>
+            <li>sidenote-cli's drift-detection idea (refuse to resolve a comment if the underlying source moved) is good and worth adopting regardless of scope</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. ARCHITECTURE -->
+  <section>
+    <h2 class="text-2xl font-bold mb-1">2. Core loop, as it will work</h2>
+    <p class="opacity-70 mb-4">Non-negotiable for v1 regardless of what else gets deferred.</p>
+    <div class="bg-base-200 rounded-box p-4 lg:p-6 overflow-x-auto">
+      <pre class="mermaid">
+sequenceDiagram
+    participant Agent
+    participant Server as Local server (loopback)
+    participant Browser as Browser UI
+    Agent->>Server: write artifact.html, open session
+    Server->>Browser: launch / resume tab
+    Browser->>Browser: human selects element or text range, writes comment
+    Browser->>Server: queue feedback
+    Agent->>Server: poll (long-poll, blocks)
+    Server-->>Agent: feedback batch (once queued)
+    Agent->>Agent: revise artifact.html
+    Agent->>Server: poll again with --agent-reply
+    Server->>Browser: live reload, preserve scroll + unsent draft
+    Browser-->>Agent: session continues or ends
+      </pre>
+    </div>
+  </section>
+
+  <!-- 3. V1 SCOPE -->
+  <section>
+    <h2 class="text-2xl font-bold mb-1">3. v1 scope recommendation</h2>
+    <p class="opacity-70 mb-4">Layout-issue inbox and Mermaid editing are lavish-axi's standout differentiators — and also its most complex pieces. Decided: ship the core loop alone in v1; both differentiators are noted down for v2.</p>
+
+    <div class="grid md:grid-cols-3 gap-4">
+      <div class="card card-border bg-base-100">
+        <div class="card-body">
+          <div class="flex items-center justify-between">
+            <h3 class="card-title text-base">Core loop</h3>
+            <span class="badge badge-success">v1 — in</span>
+          </div>
+          <p class="text-sm opacity-80">Open → annotate element/text range → queue → long-poll → agent revises → live reload with state preservation. This is the entire non-negotiable spec.</p>
+          <p class="text-xs opacity-60 mt-2">Effort: moderate. Differentiation: table-stakes, but doing it with a smaller install footprint than lavish-axi is itself a real pitch.</p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100">
+        <div class="card-body">
+          <div class="flex items-center justify-between">
+            <h3 class="card-title text-base">Layout/QA issue inbox</h3>
+            <span class="badge badge-warning">v2</span>
+          </div>
+          <p class="text-sm opacity-80">Passive render-audit + stateful issue lifecycle (open/queued/resolved/returned) is genuinely hard to get right without false positives, and lavish-axi already does it well.</p>
+          <p class="text-xs opacity-60 mt-2">Effort: high (viewport matrix, fingerprinting, false-negative guards). Revisit once core loop is proven and there's a concrete complaint it would fix.</p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100">
+        <div class="card-body">
+          <div class="flex items-center justify-between">
+            <h3 class="card-title text-base">Mermaid diagram editing</h3>
+            <span class="badge badge-warning">v2</span>
+          </div>
+          <p class="text-sm opacity-80">Embedding Excalidraw, scene autosave, staleness detection on source change — a large surface for a feature most sessions won't touch.</p>
+          <p class="text-xs opacity-60 mt-2">Effort: high (third-party whiteboard integration). Niche relative to the core review loop.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="alert alert-info alert-soft mt-4">
+      <span class="text-sm">Adopt one idea from sidenote-cli regardless of scope: <strong>drift detection</strong> — refuse (or flag) resolving a comment anchored to a text range whose source has since changed, rather than silently editing the wrong thing.</span>
+    </div>
+  </section>
+
+  <!-- 4. NAMING -->
+  <section>
+    <h2 class="text-2xl font-bold mb-1">4. Naming check</h2>
+    <p class="opacity-70 mb-4"><strong>Decided: <span class="font-mono">inkloop</span>.</strong> "Sidenote" was dropped first — an existing GitHub project (<span class="font-mono text-xs">bharadwaj-pendyala/sidenote</span>) has an almost identical pitch: "select a passage, comment, an AI agent resolves it into a clean git diff, local-first, in-browser," with an active npm package <span class="font-mono text-xs">sidenote-cli</span> published July 2026. Several draft/loop and mark/loop variants were also checked and rejected before landing on inkloop.</p>
+
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100 mb-5">
+      <table class="table table-zebra">
+        <thead>
+          <tr><th>Candidate</th><th>npm (bare name)</th><th>Known collisions</th><th>Verdict</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="font-mono">sidenote</td>
+            <td>Taken, dormant since 2014 (unrelated)</td>
+            <td>Direct pitch collision with an active GitHub project + its <span class="font-mono text-xs">sidenote-cli</span> npm package. <span class="font-mono text-xs">sidenote.app</span> is a $3,379 premium listing.</td>
+            <td><span class="badge badge-error badge-sm">Drop</span></td>
+          </tr>
+          <tr>
+            <td class="font-mono">redline</td>
+            <td>Taken, dormant (unrelated gauge widget)</td>
+            <td>Crowded: at least 4 existing tools already use "redline" for this exact "annotate a doc, AI agent resolves it" concept (claude-redline, md-redline, and two independent redline repos).</td>
+            <td><span class="badge badge-error badge-sm">Drop</span></td>
+          </tr>
+          <tr>
+            <td class="font-mono">margin / gutter</td>
+            <td>Both taken, dormant &amp; unrelated</td>
+            <td>"Gutter" already means something specific in dev tools (the editor line-diff column) — conceptual overlap risks confusion even without a literal collision.</td>
+            <td><span class="badge badge-warning badge-sm">Weak</span></td>
+          </tr>
+          <tr>
+            <td class="font-mono">draftloop</td>
+            <td>Available</td>
+            <td>No collision, but "draft" was rejected as not fitting the annotate/markup concept.</td>
+            <td><span class="badge badge-warning badge-sm">Rejected (concept)</span></td>
+          </tr>
+          <tr>
+            <td class="font-mono">markloop</td>
+            <td>Taken, active (May 2026)</td>
+            <td>Yet another close-concept entrant: "local CLI and browser UI for iterative Markdown review."</td>
+            <td><span class="badge badge-error badge-sm">Drop</span></td>
+          </tr>
+          <tr class="bg-success/10">
+            <td class="font-mono font-semibold">inkloop</td>
+            <td>Available (no publish found)</td>
+            <td>No npm hits. GitHub username <span class="font-mono text-xs">inkloop</span> belongs to an unrelated individual (personal forks only, no tooling projects) — not a project-name conflict, but means the exact GitHub org handle may need a variant.</td>
+            <td><span class="badge badge-success badge-sm">Decided</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="alert alert-warning alert-soft">
+      <span class="text-sm"><strong>Not yet verified:</strong> <span class="font-mono text-xs">inkloop.dev</span> / <span class="font-mono text-xs">.app</span> domain availability — do this before registering anything or writing it into package.json. Searches found no product/tool collision, which is different from a confirmed-available registration.</span>
+    </div>
+  </section>
+
+  <!-- 5. TECH STACK -->
+  <section>
+    <h2 class="text-2xl font-bold mb-1">5. Proposed tech stack</h2>
+    <p class="opacity-70 mb-4">Biased toward minimal install weight — this tool gets installed ambiently by agents via <span class="font-mono text-xs">npx</span>, so every dependency is a tax on every session. Ships as a single npm package (CLI, server, and the injected SDK all bundled together) rather than split packages — one install surface, one version to reason about.</p>
+
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="card card-border bg-base-100">
+        <div class="card-body">
+          <h3 class="card-title text-base">CLI / local server</h3>
+          <p class="text-sm opacity-80">Node.js + TypeScript, built on the built-in <span class="font-mono text-xs">node:http</span> module rather than Express — matches lavish-axi's runtime choice (broadest <span class="font-mono text-xs">npx</span> compatibility across agent harnesses) while cutting the one framework dependency it carries.</p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100">
+        <div class="card-body">
+          <h3 class="card-title text-base">Injected browser SDK</h3>
+          <p class="text-sm opacity-80">Vanilla TypeScript compiled to a single IIFE, zero runtime dependencies. No UI framework — keeps the injected footprint tiny and guarantees it can never visually or behaviorally clash with whatever the artifact itself uses.</p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100">
+        <div class="card-body">
+          <h3 class="card-title text-base">Long-poll transport</h3>
+          <p class="text-sm opacity-80">Plain HTTP long-poll, bounded to ~30s per request with the CLI re-issuing automatically. No WebSocket dependency — each <span class="font-mono text-xs">poll</span> call is a discrete agent-process invocation anyway, so a persistent socket buys nothing.</p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-100">
+        <div class="card-body">
+          <h3 class="card-title text-base">Session / state persistence</h3>
+          <p class="text-sm opacity-80">Flat JSON files under <span class="font-mono text-xs">~/.inkloop/&lt;hash-of-absolute-path&gt;/</span>. Single local user, low write concurrency — SQLite would be a dependency with no payoff at this scale. Revisit only if the drift-detection feature needs indexed lookups.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. OPEN QUESTIONS -->
+  <section>
+    <h2 class="text-2xl font-bold mb-1">6. Open questions</h2>
+    <ul class="list-disc list-inside space-y-2 text-sm">
+      <li>Name is decided (<span class="font-mono text-xs">inkloop</span>) — still need to confirm domain (.dev/.app) and a GitHub org handle before registering anything.</li>
+      <li>License — MIT (matches lavish-axi) or something else?</li>
+    </ul>
+  </section>
+
+</main>
+
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+  const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+  const paint = document.createElement("canvas").getContext("2d");
+  function toRgba(color) {
+    paint.clearRect(0, 0, 1, 1);
+    paint.fillStyle = "#000";
+    paint.fillStyle = color;
+    paint.fillRect(0, 0, 1, 1);
+    return paint.getImageData(0, 0, 1, 1).data;
+  }
+  function compositeRgba(fg, bg) {
+    const fa = fg[3] / 255, ba = bg[3] / 255;
+    const a = fa + ba * (1 - fa);
+    if (a === 0) return [0, 0, 0, 0];
+    return [
+      (fg[0] * fa + bg[0] * ba * (1 - fa)) / a,
+      (fg[1] * fa + bg[1] * ba * (1 - fa)) / a,
+      (fg[2] * fa + bg[2] * ba * (1 - fa)) / a,
+      a * 255,
+    ];
+  }
+  function pageIsDark() {
+    const root = document.documentElement;
+    const rootBg = toRgba(getComputedStyle(root).backgroundColor);
+    const bodyBg = document.body ? toRgba(getComputedStyle(document.body).backgroundColor) : [0, 0, 0, 0];
+    const [r, g, b, a] = compositeRgba(bodyBg, rootBg);
+    if (a > 0) return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.5;
+    const cs = getComputedStyle(root).colorScheme;
+    if (cs.includes("dark") && !cs.includes("light")) return true;
+    if (cs.includes("light") && !cs.includes("dark")) return false;
+    return darkQuery.matches;
+  }
+  const diagrams = [...document.querySelectorAll(".mermaid")].map((el) => ({ el, src: el.textContent }));
+  let applied, rendering = false, queued = false;
+  function queueRender() { queued = true; if (!rendering) void render(); }
+  async function render() {
+    rendering = true;
+    try {
+      while (queued) {
+        queued = false;
+        const theme = pageIsDark() ? "dark" : "default";
+        if (theme === applied) continue;
+        mermaid.initialize({ startOnLoad: false, theme, securityLevel: "strict" });
+        for (const { el, src } of diagrams) { el.removeAttribute("data-processed"); el.textContent = src; }
+        try { await mermaid.run({ nodes: diagrams.map((d) => d.el) }); }
+        catch (e) { console.error("Mermaid render failed:", e); return; }
+        applied = theme;
+      }
+    } finally {
+      rendering = false;
+      if (queued) queueRender();
+    }
+  }
+  if (document.readyState === "complete") queueRender();
+  else window.addEventListener("load", queueRender, { once: true });
+  const themeObserver = new MutationObserver(queueRender);
+  for (const el of [document.documentElement, document.body]) {
+    if (!el) continue;
+    themeObserver.observe(el, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+  }
+  document.addEventListener("change", queueRender, true);
+  document.addEventListener("transitionend", ({ propertyName }) => { if (propertyName === "background-color") queueRender(); }, true);
+  darkQuery.addEventListener("change", queueRender);
+</script>
+</body>
+</html>
