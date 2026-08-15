@@ -133,9 +133,9 @@ export function renderReviewShell(hash: string): string {
 <header>
   <span class="wordmark">inkloop</span>
   <span class="session-path">session ${hash}</span>
-  <button type="button" class="pick" id="pick-btn">Pick element</button>
+  <button type="button" class="pick" id="pick-btn">Select element</button>
 </header>
-<div class="picking-hint" id="picking-hint">Click an element in the artifact to annotate it — click “Pick element” again to cancel.</div>
+<div class="picking-hint" id="picking-hint">Click an element in the artifact to annotate it — click “Select element” again to cancel.</div>
 <main>
   <iframe id="artifact-frame" src="/session/${hash}/artifact" title="artifact preview"></iframe>
 </main>
