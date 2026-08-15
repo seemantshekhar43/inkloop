@@ -18,7 +18,7 @@ void test("renders the annotation composer and a disabled Send button with an em
 
 void test("renders the element-picker toggle button", () => {
   const html = renderReviewShell(HASH);
-  assert.match(html, /<button type="button" class="pick" id="pick-btn">Pick element<\/button>/);
+  assert.match(html, /<button type="button" class="pick" id="pick-btn">Select element<\/button>/);
 });
 
 void test("wires up the postMessage bridge to the SDK's message vocabulary", () => {
