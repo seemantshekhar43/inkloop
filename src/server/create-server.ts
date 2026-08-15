@@ -3,8 +3,9 @@ import { readFile } from "node:fs/promises";
 import type { ServerConfig } from "./config.js";
 import { isHostAllowed } from "./host-validation.js";
 import { readSessionRecordByHash } from "../shared/session-store.js";
-import { appendFeedback } from "../shared/feedback-store.js";
+import { appendFeedback, readPendingFeedback, takePendingFeedback } from "../shared/feedback-store.js";
 import { isValidFeedbackBatch } from "../shared/feedback.js";
+import { appendAgentReply, isValidAgentReplyMessage } from "../shared/agent-reply-store.js";
 import { renderReviewShell } from "./review-shell.js";
 import { injectSdkScript, readSdkSource, SdkNotBuiltError } from "./inject-sdk.js";
 
@@ -18,6 +19,14 @@ export interface InkloopServer {
 
 const SESSION_ROUTE = /^\/session\/([0-9a-f]{16})(\/artifact)?\/?$/;
 const FEEDBACK_ROUTE = /^\/session\/([0-9a-f]{16})\/feedback\/?$/;
+const POLL_ROUTE = /^\/session\/([0-9a-f]{16})\/poll\/?$/;
+const AGENT_REPLY_ROUTE = /^\/session\/([0-9a-f]{16})\/agent-reply\/?$/;
+
+/** How often the poll route re-checks for newly-queued feedback while it waits. */
+const POLL_CHECK_INTERVAL_MS = 300;
+
+/** Hard cap on an agent-reply POST body, same rationale as MAX_FEEDBACK_BODY_BYTES below. */
+const MAX_AGENT_REPLY_BODY_BYTES = 64 * 1024;
 
 /** Hard cap on a feedback POST body — an unauthenticated local server should never buffer an
  * unbounded request into memory, regardless of what shape validation would later reject it for. */
@@ -150,7 +159,87 @@ async function handleFeedbackRoute(
   sendJson(res, 201, { queued: parsed.length, total: combined.length });
 }
 
-async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * The long-poll side of the core loop (issue #7): blocks up to config.pollTimeoutMs, checking
+ * for newly-queued feedback every POLL_CHECK_INTERVAL_MS, and returns as soon as any exists.
+ * Returns an empty `items` array (still 200, not an error) on timeout — the CLI treats an empty
+ * result as "nothing yet" and re-issues the request, so from the agent's perspective a single
+ * `inkloop poll` call blocks indefinitely across as many of these bounded requests as it takes.
+ *
+ * Claims (marks delivered) whatever it returns via takePendingFeedback, so a subsequent poll
+ * never redelivers the same items — see that function's docstring for the persistence model.
+ */
+async function handlePollRoute(
+  res: http.ServerResponse,
+  hash: string,
+  pollTimeoutMs: number,
+): Promise<void> {
+  const record = await readSessionRecordByHash(hash);
+  if (!record) {
+    sendJson(res, 404, { error: "session_not_found" });
+    return;
+  }
+
+  const deadline = Date.now() + pollTimeoutMs;
+  for (;;) {
+    const pending = await readPendingFeedback(hash);
+    if (pending.length > 0) {
+      const claimed = await takePendingFeedback(hash);
+      sendJson(res, 200, { items: claimed });
+      return;
+    }
+    if (Date.now() >= deadline) {
+      sendJson(res, 200, { items: [] });
+      return;
+    }
+    await sleep(Math.min(POLL_CHECK_INTERVAL_MS, Math.max(0, deadline - Date.now())));
+  }
+}
+
+async function handleAgentReplyRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  hash: string,
+): Promise<void> {
+  const record = await readSessionRecordByHash(hash);
+  if (!record) {
+    sendJson(res, 404, { error: "session_not_found" });
+    return;
+  }
+
+  const raw = await readBody(req, MAX_AGENT_REPLY_BODY_BYTES);
+  if (raw === undefined) {
+    sendJson(res, 413, { error: "payload_too_large" });
+    return;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    sendJson(res, 400, { error: "invalid_json" });
+    return;
+  }
+
+  const message = (parsed as Record<string, unknown> | null)?.["message"];
+  if (!isValidAgentReplyMessage(message)) {
+    sendJson(res, 400, { error: "invalid_agent_reply" });
+    return;
+  }
+
+  const reply = await appendAgentReply(hash, message);
+  sendJson(res, 201, { reply });
+}
+
+async function handleRequest(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  config: ServerConfig,
+): Promise<void> {
   if (req.method === "GET" && req.url === "/health") {
     sendJson(res, 200, { status: "ok", service: "inkloop" });
     return;
@@ -164,6 +253,18 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
   const feedbackMatch = req.url ? FEEDBACK_ROUTE.exec(req.url) : null;
   if (req.method === "POST" && feedbackMatch) {
     await handleFeedbackRoute(req, res, feedbackMatch[1] as string);
+    return;
+  }
+
+  const pollMatch = req.url ? POLL_ROUTE.exec(req.url) : null;
+  if (req.method === "GET" && pollMatch) {
+    await handlePollRoute(res, pollMatch[1] as string, config.pollTimeoutMs);
+    return;
+  }
+
+  const agentReplyMatch = req.url ? AGENT_REPLY_ROUTE.exec(req.url) : null;
+  if (req.method === "POST" && agentReplyMatch) {
+    await handleAgentReplyRoute(req, res, agentReplyMatch[1] as string);
     return;
   }
 
@@ -187,8 +288,9 @@ async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse
  *
  * Routes: GET /health, GET /sdk.js (the injected browser SDK bundle), GET /session/:hash (review
  * shell), GET /session/:hash/artifact (the artifact file, with the SDK <script> injected at
- * serve time), POST /session/:hash/feedback (queue a batch of drafted annotations). The long-poll
- * side that an agent process consumes lands in issue #7.
+ * serve time), POST /session/:hash/feedback (queue a batch of drafted annotations),
+ * GET /session/:hash/poll (long-poll for queued feedback, consumed by `inkloop poll`),
+ * POST /session/:hash/agent-reply (record an agent's revision summary ahead of its next poll).
  */
 export function createInkloopServer(
   config: ServerConfig,
@@ -208,7 +310,7 @@ export function createInkloopServer(
       return;
     }
 
-    handleRequest(req, res).catch((err: unknown) => {
+    handleRequest(req, res, config).catch((err: unknown) => {
       process.stderr.write(
         `[inkloop] request handler error: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
       );

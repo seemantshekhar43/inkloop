@@ -1,24 +1,24 @@
 #!/usr/bin/env node
 import { getVersion } from "../shared/version.js";
 import { runOpenCommand } from "./commands/open.js";
+import { runPollCommand } from "./commands/poll.js";
 import { runServerCommand } from "./commands/server.js";
 
 const HELP_TEXT = `inkloop — local-first review loop for agent-written HTML artifacts
 
 Usage:
-  inkloop <file>            Open or resume a review session for <file>
-  inkloop <file> --reopen   Reopen a session the user ended from the browser
-  inkloop poll <file>       Long-poll for queued feedback
-  inkloop end <file>        End a session (agent-initiated)
-  inkloop --version         Print the installed version
-  inkloop --help            Show this help text
+  inkloop <file>                          Open or resume a review session for <file>
+  inkloop <file> --reopen                 Reopen a session the user ended from the browser
+  inkloop poll <file>                     Long-poll for queued feedback
+  inkloop poll <file> --agent-reply <msg> Post a revision summary, then long-poll again
+  inkloop end <file>                      End a session (agent-initiated)
+  inkloop --version                       Print the installed version
+  inkloop --help                          Show this help text
 
-poll and end are not implemented yet — see
-https://github.com/seemantshekhar43/inkloop/issues/7 and /9.
+end is not implemented yet — see https://github.com/seemantshekhar43/inkloop/issues/9.
 `;
 
 const NOT_YET_IMPLEMENTED: Record<string, string> = {
-  poll: "https://github.com/seemantshekhar43/inkloop/issues/7",
   end: "https://github.com/seemantshekhar43/inkloop/issues/9",
 };
 
@@ -40,6 +40,21 @@ export async function run(argv: readonly string[]): Promise<number> {
   if (first === "__server") {
     await runServerCommand();
     return 0; // unreachable — runServerCommand() never resolves
+  }
+
+  if (first === "poll") {
+    const [pollFile, ...pollRest] = rest;
+    if (!pollFile) {
+      process.stderr.write("inkloop: `poll` requires a file argument\n\n" + HELP_TEXT);
+      return 1;
+    }
+    const flagIndex = pollRest.indexOf("--agent-reply");
+    if (flagIndex !== -1 && pollRest[flagIndex + 1] === undefined) {
+      process.stderr.write("inkloop: --agent-reply requires a message argument\n");
+      return 1;
+    }
+    const agentReply = flagIndex === -1 ? undefined : pollRest[flagIndex + 1];
+    return runPollCommand(pollFile, agentReply === undefined ? {} : { agentReply });
   }
 
   const notYetImplementedUrl = NOT_YET_IMPLEMENTED[first];

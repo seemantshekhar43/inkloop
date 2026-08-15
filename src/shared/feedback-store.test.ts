@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { appendFeedback, readFeedback } from "./feedback-store.js";
+import { appendFeedback, readFeedback, readPendingFeedback, takePendingFeedback } from "./feedback-store.js";
 import type { FeedbackItem } from "./feedback.js";
 
 async function tempStateRoot(): Promise<string> {
@@ -57,5 +57,46 @@ void test("appendFeedback keeps sessions with different hashes isolated", async 
   assert.deepEqual(
     (await readFeedback("c".repeat(16), stateRoot)).map((i) => i.id),
     ["y"],
+  );
+});
+
+void test("takePendingFeedback claims only undelivered items and is idempotent on an empty queue", async () => {
+  const stateRoot = await tempStateRoot();
+  const hash = "d".repeat(16);
+  assert.deepEqual(await takePendingFeedback(hash, stateRoot), []);
+
+  await appendFeedback(hash, [item("1"), item("2")], stateRoot);
+  const claimed = await takePendingFeedback(hash, stateRoot);
+  assert.deepEqual(
+    claimed.map((i) => i.id),
+    ["1", "2"],
+  );
+  assert.ok(claimed.every((i) => typeof i.deliveredAt === "string"));
+
+  // Already delivered — a second poll gets nothing new, even though the items still exist on
+  // disk for history.
+  assert.deepEqual(await takePendingFeedback(hash, stateRoot), []);
+  assert.equal((await readFeedback(hash, stateRoot)).length, 2);
+});
+
+void test("readPendingFeedback and takePendingFeedback only ever see items queued after the last delivery", async () => {
+  const stateRoot = await tempStateRoot();
+  const hash = "e".repeat(16);
+
+  await appendFeedback(hash, [item("1")], stateRoot);
+  await takePendingFeedback(hash, stateRoot);
+  assert.deepEqual(await readPendingFeedback(hash, stateRoot), []);
+
+  await appendFeedback(hash, [item("2")], stateRoot);
+  const pending = await readPendingFeedback(hash, stateRoot);
+  assert.deepEqual(
+    pending.map((i) => i.id),
+    ["2"],
+  );
+
+  const claimed = await takePendingFeedback(hash, stateRoot);
+  assert.deepEqual(
+    claimed.map((i) => i.id),
+    ["2"],
   );
 });

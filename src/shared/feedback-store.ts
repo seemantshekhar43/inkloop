@@ -54,3 +54,58 @@ export async function appendFeedback(
   await rename(tmp, target);
   return combined;
 }
+
+async function writeFeedbackAtomic(
+  hash: string,
+  items: FeedbackItem[],
+  stateRoot: string,
+): Promise<void> {
+  const dir = sessionDirByHash(hash, stateRoot);
+  await mkdir(dir, { recursive: true });
+  const target = feedbackFile(hash, stateRoot);
+  const tmp = path.join(dir, `.feedback.json.${randomUUID()}.tmp`);
+  await writeFile(tmp, JSON.stringify(items, null, 2), "utf8");
+  await rename(tmp, target);
+}
+
+/**
+ * Reads only the feedback items an `inkloop poll` call hasn't already delivered to the agent
+ * (no `deliveredAt` yet). Read-only — unlike takePendingFeedback, this doesn't mark anything as
+ * delivered, so it's safe for the poll loop's own has-anything-changed checks between requests.
+ */
+export async function readPendingFeedback(
+  hash: string,
+  stateRoot: string = defaultStateRoot(),
+): Promise<FeedbackItem[]> {
+  const all = await readFeedback(hash, stateRoot);
+  return all.filter((item) => item.deliveredAt === undefined);
+}
+
+/**
+ * Atomically claims every currently-pending feedback item for a session: marks each with a
+ * `deliveredAt` timestamp and persists that back to feedback.json, then returns just the batch
+ * that was newly claimed. Delivered items are kept on disk (not deleted) so a full session
+ * history survives for issue #21 — only the poll cursor (deliveredAt) advances.
+ *
+ * There is no cross-process locking here: appendFeedback (browser POST) and takePendingFeedback
+ * (agent poll) are both plain read-modify-write cycles. That's an accepted tradeoff for a
+ * single-user local server with low write concurrency (see docs/plan.md §5) rather than a gap to
+ * close with a dependency like a file lock or SQLite.
+ */
+export async function takePendingFeedback(
+  hash: string,
+  stateRoot: string = defaultStateRoot(),
+): Promise<FeedbackItem[]> {
+  const all = await readFeedback(hash, stateRoot);
+  const deliveredAt = new Date().toISOString();
+  const claimed: FeedbackItem[] = [];
+  const updated = all.map((item) => {
+    if (item.deliveredAt !== undefined) return item;
+    const withDeliveredAt = { ...item, deliveredAt };
+    claimed.push(withDeliveredAt);
+    return withDeliveredAt;
+  });
+  if (claimed.length === 0) return [];
+  await writeFeedbackAtomic(hash, updated, stateRoot);
+  return claimed;
+}

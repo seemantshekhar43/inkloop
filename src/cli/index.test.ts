@@ -46,11 +46,26 @@ void test("an unrecognized flag exits 1 and explains on stderr", async () => {
   assert.match(text, /unrecognized flag/);
 });
 
-void test("poll is recognized but reports not-yet-implemented with a tracking link", async () => {
-  const { code, text } = await captureWrite(process.stderr, () => run(["poll", "file.html"]));
+void test("poll without a file argument exits 1 and prints usage", async () => {
+  const { code, text } = await captureWrite(process.stderr, () => run(["poll"]));
   assert.equal(code, 1);
-  assert.match(text, /not implemented yet/);
-  assert.match(text, /issues\/7/);
+  assert.match(text, /requires a file argument/);
+});
+
+void test("poll --agent-reply without a message exits 1", async () => {
+  const { code, text } = await captureWrite(process.stderr, () =>
+    run(["poll", "file.html", "--agent-reply"]),
+  );
+  assert.equal(code, 1);
+  assert.match(text, /--agent-reply requires a message/);
+});
+
+void test("poll with no session for the file exits 1 (routing is covered end to end in commands/poll.test.ts)", async () => {
+  const { code, text } = await captureWrite(process.stderr, () =>
+    run(["poll", "/nonexistent/artifact.html"]),
+  );
+  assert.equal(code, 1);
+  assert.match(text, /no session found/);
 });
 
 void test("end is recognized but reports not-yet-implemented with a tracking link", async () => {
