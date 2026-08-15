@@ -288,7 +288,10 @@
   });
 
   async function sendQueue(): Promise<void> {
-    if (queue.length === 0) return;
+    if (queue.length === 0) {
+      postToParent({ type: "inkloop:sent" });
+      return;
+    }
     try {
       const response = await fetch(`/session/${sessionHash}/feedback`, {
         method: "POST",
