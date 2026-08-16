@@ -46,7 +46,12 @@ export async function appendFeedback(
   const dir = sessionDirByHash(hash, stateRoot);
   await mkdir(dir, { recursive: true });
   const existing = await readFeedback(hash, stateRoot);
-  const combined = [...existing, ...items];
+
+  // Every item in one appendFeedback call came from a single browser "Send" click, so they all
+  // share the next round number — see FeedbackItem.round's docstring.
+  const nextRound = existing.reduce((max, item) => Math.max(max, item.round ?? 0), 0) + 1;
+  const roundedItems = items.map((item) => ({ ...item, round: nextRound }));
+  const combined = [...existing, ...roundedItems];
 
   const target = feedbackFile(hash, stateRoot);
   const tmp = path.join(dir, `.feedback.json.${randomUUID()}.tmp`);

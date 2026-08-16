@@ -9,6 +9,7 @@ import {
   MAX_AGENT_REPLY_LENGTH,
   readAgentReplies,
 } from "./agent-reply-store.js";
+import { appendFeedback, takePendingFeedback } from "./feedback-store.js";
 
 async function tempStateRoot(): Promise<string> {
   return mkdtemp(path.join(os.tmpdir(), "inkloop-agent-reply-store-test-"));
@@ -49,6 +50,31 @@ void test("appendAgentReply keeps sessions with different hashes isolated", asyn
     (await readAgentReplies("c".repeat(16), stateRoot)).map((r) => r.message),
     ["reply c"],
   );
+});
+
+void test("appendAgentReply links the reply to the highest round delivered so far, or leaves it unset", async () => {
+  const stateRoot = await tempStateRoot();
+  const hash = "d".repeat(16);
+
+  const noFeedbackYet = await appendAgentReply(hash, "reply before any poll", stateRoot);
+  assert.equal(noFeedbackYet.round, undefined);
+
+  await appendFeedback(hash, [
+    { id: "1", target: { kind: "general" }, comment: "c1", createdAt: new Date().toISOString() },
+  ], stateRoot);
+  const queuedNotDelivered = await appendAgentReply(hash, "reply before delivery", stateRoot);
+  assert.equal(queuedNotDelivered.round, undefined);
+
+  await takePendingFeedback(hash, stateRoot);
+  const afterRoundOne = await appendAgentReply(hash, "reply after round 1", stateRoot);
+  assert.equal(afterRoundOne.round, 1);
+
+  await appendFeedback(hash, [
+    { id: "2", target: { kind: "general" }, comment: "c2", createdAt: new Date().toISOString() },
+  ], stateRoot);
+  await takePendingFeedback(hash, stateRoot);
+  const afterRoundTwo = await appendAgentReply(hash, "reply after round 2", stateRoot);
+  assert.equal(afterRoundTwo.round, 2);
 });
 
 void test("isValidAgentReplyMessage rejects empty, whitespace-only, non-string, and oversized values", () => {

@@ -33,6 +33,15 @@ export interface FeedbackItem {
    * (issue #21) instead of deleting them.
    */
   deliveredAt?: string;
+  /**
+   * Server-assigned round number: all items appended together in one POST /feedback batch (one
+   * browser "Send" click) share the same round, and rounds increment session-wide. Never set by
+   * the client. This is the data-model groundwork issue #21 asks for alongside whichever of
+   * #7/#8 lands second (#8, since #7 landed first) — a future round-history UI needs a real
+   * boundary to group past annotations by, not a fabricated one. See feedback-store.ts's
+   * appendFeedback for where it's assigned.
+   */
+  round?: number;
 }
 
 /** Hard caps enforced on inbound feedback batches — an unauthenticated local server still
