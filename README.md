@@ -30,6 +30,13 @@ agent writes artifact.html
   → repeat until inkloop end <file>
 ```
 
+## Using inkloop as an agent skill
+
+[`skills/inkloop/SKILL.md`](skills/inkloop/SKILL.md) packages the core loop above as a Claude Code
+skill, so an agent recognizes when an HTML artifact is worth putting through inkloop and knows the
+exact command sequence (`inkloop`, `inkloop poll --agent-reply`, `inkloop end`) without re-deriving
+it from `--help` each session.
+
 ## v1 scope
 
 In scope: the core loop above, exactly as it is.
