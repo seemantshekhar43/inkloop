@@ -6,7 +6,7 @@ import path from "node:path";
 import { runPollCommand } from "../../../src/cli/commands/poll.js";
 import { loadServerConfig } from "../../../src/server/config.js";
 import { createInkloopServer, type InkloopServer } from "../../../src/server/create-server.js";
-import { hashArtifactPath, openOrResumeSession } from "../../../src/shared/session-store.js";
+import { endSession, hashArtifactPath, openOrResumeSession } from "../../../src/shared/session-store.js";
 import { appendFeedback } from "../../../src/shared/feedback-store.js";
 import { readAgentReplies } from "../../../src/shared/agent-reply-store.js";
 
@@ -91,9 +91,10 @@ void test("returns queued feedback already present when the poll call is made", 
 
     const { code, text } = await captureWrite(process.stdout, () => runPollCommand(artifactPath));
     assert.equal(code, 0);
-    const items = JSON.parse(text) as Array<{ id: string; comment: string }>;
-    assert.equal(items.length, 1);
-    assert.equal(items[0]?.comment, "pre-queued");
+    const body = JSON.parse(text) as { items: Array<{ id: string; comment: string }>; next_step: string };
+    assert.equal(body.items.length, 1);
+    assert.equal(body.items[0]?.comment, "pre-queued");
+    assert.match(body.next_step, /inkloop poll/);
   });
 });
 
@@ -119,11 +120,33 @@ void test("blocks across an empty poll round-trip and returns once feedback arri
 
     const { code, text } = await captureWrite(process.stdout, () => runPollCommand(artifactPath));
     assert.equal(code, 0);
-    const items = JSON.parse(text) as Array<{ id: string }>;
+    const body = JSON.parse(text) as { items: Array<{ id: string }> };
     assert.deepEqual(
-      items.map((i) => i.id),
+      body.items.map((i) => i.id),
       ["late-item"],
     );
+  });
+});
+
+void test("returns immediately with next_step once the session ends, even with no pending items", async () => {
+  await withTestEnvironment(async ({ artifactDir }) => {
+    const artifactPath = path.join(artifactDir, "artifact.html");
+    await writeFile(artifactPath, "<p>hi</p>", "utf8");
+    await openOrResumeSession(artifactPath);
+    await endSession(artifactPath, "user");
+
+    const { code, text } = await captureWrite(process.stdout, () => runPollCommand(artifactPath));
+    assert.equal(code, 0);
+    const body = JSON.parse(text) as {
+      items: unknown[];
+      ended: boolean;
+      endedBy: string;
+      next_step: string;
+    };
+    assert.deepEqual(body.items, []);
+    assert.equal(body.ended, true);
+    assert.equal(body.endedBy, "user");
+    assert.match(body.next_step, /--reopen/);
   });
 });
 

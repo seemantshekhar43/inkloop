@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { resolveArtifactPath } from "../../shared/paths.js";
-import { hashArtifactPath, openOrResumeSession } from "../../shared/session-store.js";
+import { hashArtifactPath, openOrResumeSession, OPEN_NEXT_STEP } from "../../shared/session-store.js";
 import { loadServerConfig } from "../../server/config.js";
 import { ensureServerRunning } from "../../server/ensure-running.js";
 
@@ -49,6 +49,10 @@ export async function runOpenCommand(
   await ensureServerRunning(config);
 
   const url = `http://${linkableHost(config.host)}:${config.port}/session/${hashArtifactPath(absolutePath)}`;
+  // stdout stays a bare URL (issue #39 adds guidance without breaking anything that copies this
+  // line directly, e.g. to share with a human) — the next-step guidance goes to stderr, the same
+  // progress-banner channel `inkloop poll` already uses for its own non-payload output.
   process.stdout.write(`${url}\n`);
+  process.stderr.write(`[inkloop] next: ${OPEN_NEXT_STEP}\n`);
   return 0;
 }

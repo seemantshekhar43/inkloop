@@ -95,6 +95,17 @@ void test("opens a new session and prints a URL that serves the artifact", async
   });
 });
 
+void test("prints next-step guidance to stderr alongside the URL (issue #39)", async () => {
+  await withTestEnvironment(async ({ artifactDir }) => {
+    const artifactPath = path.join(artifactDir, "artifact.html");
+    await writeFile(artifactPath, "<p>hello</p>", "utf8");
+
+    const { code, text } = await captureWrite(process.stderr, () => runOpenCommand(artifactPath));
+    assert.equal(code, 0);
+    assert.match(text, /inkloop poll/);
+  });
+});
+
 void test("fails cleanly when the file does not exist", async () => {
   await withTestEnvironment(async ({ artifactDir }) => {
     const missing = path.join(artifactDir, "nope.html");

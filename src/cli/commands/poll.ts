@@ -1,5 +1,5 @@
 import http from "node:http";
-import { hashArtifactPath, readSessionRecord } from "../../shared/session-store.js";
+import { hashArtifactPath, readSessionRecord, POLL_FEEDBACK_NEXT_STEP } from "../../shared/session-store.js";
 import type { FeedbackItem } from "../../shared/feedback.js";
 import { resolveArtifactPath } from "../../shared/paths.js";
 import { loadServerConfig } from "../../server/config.js";
@@ -66,6 +66,14 @@ function sleep(ms: number): Promise<void> {
  * on each empty result so the caller's single invocation blocks indefinitely from its own
  * perspective. stdout carries only the final feedback payload (as JSON); every progress banner
  * goes to stderr, matching lavish-axi's agent ergonomics (AGENTS.md / docs/plan.md).
+ *
+ * The payload is always `{ items, next_step, ... }` (issue #39) rather than a bare items array:
+ * `next_step` spells out the literal next command, and — when the session ended mid-wait, with or
+ * without a final batch of items — `ended`/`endedBy` ride along too, sourced from the server's own
+ * `next_step` for that case (see create-server.ts's handlePollRoute). Returning as soon as `ended`
+ * is true, even with an empty `items`, also fixes what would otherwise be a busy-loop: the server
+ * skips the rest of its timeout once a session ends, so without this check every immediate
+ * empty-but-ended reply would just be re-polled forever.
  */
 export async function runPollCommand(
   filePathArg: string,
@@ -123,9 +131,22 @@ export async function runPollCommand(
       return 1;
     }
 
-    const items = (result.body as { items?: FeedbackItem[] } | undefined)?.items ?? [];
-    if (items.length > 0) {
-      process.stdout.write(`${JSON.stringify(items, null, 2)}\n`);
+    const body = result.body as
+      | { items?: FeedbackItem[]; ended?: boolean; endedBy?: string; next_step?: string }
+      | undefined;
+    const items = body?.items ?? [];
+    const ended = body?.ended === true;
+
+    if (items.length > 0 || ended) {
+      const payload: Record<string, unknown> = { items };
+      if (ended) {
+        payload["ended"] = true;
+        payload["endedBy"] = body?.endedBy;
+        payload["next_step"] = body?.next_step;
+      } else {
+        payload["next_step"] = POLL_FEEDBACK_NEXT_STEP;
+      }
+      process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
       return 0;
     }
 
