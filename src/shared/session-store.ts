@@ -173,6 +173,10 @@ export async function openOrResumeSession(
 /**
  * Ends a session. Throws SessionNotFoundError if no session was ever opened for this path —
  * ending a session that doesn't exist is a caller bug, not a state worth silently accepting.
+ *
+ * A user-ended session is terminal against agent-initiated ends: once status is 'user-ended',
+ * a later endSession(path, 'agent') call is a no-op on status so it can't downgrade the
+ * reopen-refusal guarantee back to 'agent-ended'.
  */
 export async function endSession(
   absolutePath: string,
@@ -182,7 +186,8 @@ export async function endSession(
   const existing = await readSessionRecord(absolutePath, stateRoot);
   if (!existing) throw new SessionNotFoundError(absolutePath);
 
-  const status = existing.status === "user-ended" ? "user-ended" : endedBy === "agent" ? "agent-ended" : "user-ended";
+  const status =
+    existing.status === "user-ended" ? "user-ended" : endedBy === "agent" ? "agent-ended" : "user-ended";
   const record: SessionRecord = {
     ...existing,
     status,

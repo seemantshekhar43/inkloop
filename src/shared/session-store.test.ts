@@ -111,6 +111,20 @@ void test("endSession sets agent-ended vs user-ended correctly", async () => {
   assert.equal(userEnded.status, "user-ended");
 });
 
+void test("endSession does not downgrade a user-ended session to agent-ended", async () => {
+  const stateRoot = await tempStateRoot();
+
+  await openOrResumeSession("/fake/c.html", { stateRoot });
+  const userEnded = await endSession("/fake/c.html", "user", stateRoot);
+  assert.equal(userEnded.status, "user-ended");
+
+  const agentEnd = await endSession("/fake/c.html", "agent", stateRoot);
+  assert.equal(agentEnd.status, "user-ended");
+
+  const resumed = await openOrResumeSession("/fake/c.html", { stateRoot });
+  assert.equal(resumed.outcome, "refused");
+});
+
 void test("endSession throws SessionNotFoundError for a path with no session", async () => {
   const stateRoot = await tempStateRoot();
   await assert.rejects(() => endSession("/fake/never-opened.html", "agent", stateRoot), SessionNotFoundError);
