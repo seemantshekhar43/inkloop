@@ -48,6 +48,8 @@ src/
   server/   node:http server, routing, session HTTP handlers
   sdk/      injected browser SDK (compiled to a single IIFE, zero deps)
   shared/   types and pure logic shared across cli/server/sdk (session store, fingerprinting, etc.)
+test/       node:test files, mirroring src/'s directory structure 1:1 (test/server/foo.test.ts
+            covers src/server/foo.ts). src/ is production-only; keep it that way.
 ```
 
 ## GitHub issue workflow (follow this for every change)
@@ -56,7 +58,9 @@ src/
    `gh-axi issue list --label v1` for the backlog before starting anything new; file a new issue for
    anything not already covered rather than doing untracked work.
 2. **Branch per issue**: `git checkout -b issue-<n>-<short-slug>` off `main`.
-3. Implement, with tests. `node:test` files live next to the code they cover as `*.test.ts`.
+3. Implement, with tests. `node:test` files live under `test/`, mirroring the path of the `src/` module
+   they cover (e.g. `src/shared/paths.ts` -> `test/shared/paths.test.ts`), importing from `src/` via
+   relative path. Don't colocate test files inside `src/`.
 4. **Run `npm run check` locally before considering the issue done.**
 5. **Gate with the `no-mistakes` skill before pushing or opening a PR, and before merging** — it runs review,
    tests, lint, docs, and is meant to drive the push/PR/CI flow itself, not just be run against a branch

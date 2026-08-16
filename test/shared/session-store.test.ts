@@ -12,7 +12,7 @@ import {
   nextStepGuidance,
   SessionNotFoundError,
   SessionCorruptError,
-} from "./session-store.js";
+} from "../../src/shared/session-store.js";
 
 async function tempStateRoot(): Promise<string> {
   return mkdtemp(path.join(os.tmpdir(), "inkloop-session-store-test-"));

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { run } from "./index.js";
+import { run } from "../../src/cli/index.js";
 
 type WriteFn = typeof process.stdout.write;
 

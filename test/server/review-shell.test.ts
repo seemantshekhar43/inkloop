@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { renderReviewShell } from "./review-shell.js";
+import { renderReviewShell } from "../../src/server/review-shell.js";
 
 const HASH = "a".repeat(16);
 

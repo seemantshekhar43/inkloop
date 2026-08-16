@@ -7,7 +7,7 @@ import {
   MAX_DRIFT_ID_BATCH_SIZE,
   MAX_FEEDBACK_BATCH_SIZE,
   MAX_FINGERPRINT_LENGTH,
-} from "./feedback.js";
+} from "../../src/shared/feedback.js";
 
 function validItem(overrides: Record<string, unknown> = {}): unknown {
   return {

@@ -4,10 +4,10 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import http from "node:http";
-import { runOpenCommand } from "./open.js";
-import { loadServerConfig } from "../../server/config.js";
-import { createInkloopServer, type InkloopServer } from "../../server/create-server.js";
-import { endSession } from "../../shared/session-store.js";
+import { runOpenCommand } from "../../../src/cli/commands/open.js";
+import { loadServerConfig } from "../../../src/server/config.js";
+import { createInkloopServer, type InkloopServer } from "../../../src/server/create-server.js";
+import { endSession } from "../../../src/shared/session-store.js";
 
 type WriteFn = typeof process.stdout.write;
 

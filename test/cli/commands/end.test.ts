@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { runEndCommand } from "./end.js";
-import { openOrResumeSession, readSessionRecord } from "../../shared/session-store.js";
+import { runEndCommand } from "../../../src/cli/commands/end.js";
+import { openOrResumeSession, readSessionRecord } from "../../../src/shared/session-store.js";
 
 type WriteFn = typeof process.stdout.write;
 

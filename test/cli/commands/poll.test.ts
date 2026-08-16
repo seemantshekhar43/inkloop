@@ -3,12 +3,12 @@ import assert from "node:assert/strict";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { runPollCommand } from "./poll.js";
-import { loadServerConfig } from "../../server/config.js";
-import { createInkloopServer, type InkloopServer } from "../../server/create-server.js";
-import { hashArtifactPath, openOrResumeSession } from "../../shared/session-store.js";
-import { appendFeedback } from "../../shared/feedback-store.js";
-import { readAgentReplies } from "../../shared/agent-reply-store.js";
+import { runPollCommand } from "../../../src/cli/commands/poll.js";
+import { loadServerConfig } from "../../../src/server/config.js";
+import { createInkloopServer, type InkloopServer } from "../../../src/server/create-server.js";
+import { hashArtifactPath, openOrResumeSession } from "../../../src/shared/session-store.js";
+import { appendFeedback } from "../../../src/shared/feedback-store.js";
+import { readAgentReplies } from "../../../src/shared/agent-reply-store.js";
 
 type WriteFn = typeof process.stdout.write;
 

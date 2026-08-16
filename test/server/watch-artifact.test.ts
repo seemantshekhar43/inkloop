@@ -8,7 +8,7 @@ import {
   createArtifactWatcher,
   extractLocalSiblingAssets,
   waitForChange,
-} from "./watch-artifact.js";
+} from "../../src/server/watch-artifact.js";
 
 async function tempArtifactDir(): Promise<string> {
   return mkdtemp(path.join(os.tmpdir(), "inkloop-watch-artifact-test-"));
