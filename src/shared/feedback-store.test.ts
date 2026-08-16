@@ -30,7 +30,7 @@ void test("appendFeedback persists items and readFeedback reads them back", asyn
 
   const firstItem = item("1");
   const first = await appendFeedback(hash, [firstItem], stateRoot);
-  assert.deepEqual(first, [firstItem]);
+  assert.deepEqual(first, [{ ...firstItem, round: 1 }]);
 
   const combined = await appendFeedback(hash, [item("2"), item("3")], stateRoot);
   assert.deepEqual(
@@ -42,6 +42,23 @@ void test("appendFeedback persists items and readFeedback reads them back", asyn
   assert.deepEqual(
     read.map((i) => i.id),
     ["1", "2", "3"],
+  );
+});
+
+void test("appendFeedback assigns one round number per batch, incrementing session-wide", async () => {
+  const stateRoot = await tempStateRoot();
+  const hash = "f".repeat(16);
+
+  const first = await appendFeedback(hash, [item("1"), item("2")], stateRoot);
+  assert.deepEqual(
+    first.map((i) => i.round),
+    [1, 1],
+  );
+
+  const second = await appendFeedback(hash, [item("3")], stateRoot);
+  assert.deepEqual(
+    second.map((i) => i.round),
+    [1, 1, 2],
   );
 });
 

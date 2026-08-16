@@ -247,6 +247,10 @@ void test("GET /sdk.js serves the compiled SDK bundle as JavaScript, no Host byp
     // Sanity check it's the real bundle, not a stub — it defines the IIFE and guards on being
     // hosted in an iframe.
     assert.match(body, /window === window\.parent/);
+    // Live reload (issue #8): scroll reporting and draft-state restoration made it into the
+    // compiled bundle, not just the TypeScript source.
+    assert.match(body, /inkloop:scroll/);
+    assert.match(body, /inkloop:restore-draft/);
     assert.doesNotMatch(body, /^export /m);
   } finally {
     await instance.close();
@@ -491,6 +495,47 @@ void test("agent-reply route: valid message is accepted and persisted, unknown s
 
     const unknownHash = "0".repeat(16);
     const missing = await postJson(port, `/session/${unknownHash}/agent-reply`, { message: "hi" });
+    assert.equal(missing.status, 404);
+  } finally {
+    await instance.close();
+    process.env["INKLOOP_STATE_DIR"] = originalStateDir;
+    await rm(stateRoot, { recursive: true, force: true });
+    await rm(artifactDir, { recursive: true, force: true });
+  }
+});
+
+void test("reload route: times out at the current version with no change, and picks up a file write mid-wait", async () => {
+  const stateRoot = await mkdtemp(path.join(os.tmpdir(), "inkloop-reload-route-test-"));
+  const artifactDir = await mkdtemp(path.join(os.tmpdir(), "inkloop-reload-route-artifact-"));
+  const originalStateDir = process.env["INKLOOP_STATE_DIR"];
+  process.env["INKLOOP_STATE_DIR"] = stateRoot;
+
+  const artifactPath = path.join(artifactDir, "artifact.html");
+  await writeFile(artifactPath, "<p>v1</p>", "utf8");
+
+  const instance = createInkloopServer(baseConfig({ pollTimeoutMs: 800 }));
+  const port = await instance.listening;
+  try {
+    await openOrResumeSession(artifactPath);
+    const hash = hashArtifactPath(artifactPath);
+
+    const timedOut = await request(port, `/session/${hash}/reload?since=0`, { host: "127.0.0.1" });
+    assert.equal(timedOut.status, 200);
+    assert.deepEqual(timedOut.body, { version: 0 });
+
+    const reloadPromise = request(port, `/session/${hash}/reload?since=0`, { host: "127.0.0.1" });
+    setTimeout(() => {
+      void writeFile(artifactPath, "<p>v2</p>", "utf8");
+    }, 100);
+
+    const start = Date.now();
+    const { status, body } = await reloadPromise;
+    assert.equal(status, 200);
+    assert.ok(Date.now() - start < 800); // resolved on the change, not the timeout
+    assert.equal((body as { version: number }).version, 1);
+
+    const unknownHash = "0".repeat(16);
+    const missing = await request(port, `/session/${unknownHash}/reload?since=0`, { host: "127.0.0.1" });
     assert.equal(missing.status, 404);
   } finally {
     await instance.close();

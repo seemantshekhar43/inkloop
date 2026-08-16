@@ -160,6 +160,8 @@ export function renderReviewShell(hash: string): string {
   var statusEl = document.getElementById('status');
   var picking = false;
   var items = [];
+  var lastScrollY = 0;
+  var SESSION_HASH = ${JSON.stringify(hash)};
 
   function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, function (c) {
@@ -270,8 +272,41 @@ export function renderReviewShell(hash: string): string {
     } else if (data.type === 'inkloop:send-error') {
       resetSendButton();
       setStatus('Failed to send: ' + data.message, 'error');
+    } else if (data.type === 'inkloop:scroll') {
+      lastScrollY = data.scrollY || 0;
+    } else if (data.type === 'inkloop:ready') {
+      // Fires on the iframe's very first load too (where items is [] and lastScrollY is 0, a
+      // harmless no-op) as well as after every live-reload (issue #8) — the one place this
+      // shell needs to hand the fresh SDK instance back its own unsent draft and scroll
+      // position, since a full iframe reload wipes the SDK's in-memory state but not this
+      // shell's own (items/lastScrollY survive here untouched).
+      postToFrame({ type: 'inkloop:restore-draft', queue: items, scrollY: lastScrollY });
     }
   });
+
+  // ---- Live reload (issue #8) -------------------------------------------------------------
+  // Long-polls the same way the CLI's poll command does server-side (see create-server.ts's
+  // /session/:hash/reload route): each request is bounded, an unchanged result just means
+  // "nothing yet", and this re-issues immediately either way — no backoff needed since the
+  // route itself is what bounds request frequency.
+
+  function pollReload(sinceVersion) {
+    fetch('/session/' + SESSION_HASH + '/reload?since=' + sinceVersion)
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        var version = data.version || 0;
+        if (version > sinceVersion) {
+          iframe.src = '/session/' + SESSION_HASH + '/artifact?v=' + version;
+        }
+        pollReload(version);
+      })
+      .catch(function () {
+        // A transient network hiccup (e.g. the server restarting) isn't worth surfacing as an
+        // error — back off briefly and keep trying at the same version.
+        setTimeout(function () { pollReload(sinceVersion); }, 2000);
+      });
+  }
+  pollReload(0);
 
   render();
 })();

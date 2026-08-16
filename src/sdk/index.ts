@@ -266,7 +266,9 @@
 
   window.addEventListener("message", (event) => {
     if (event.source !== window.parent || event.origin !== window.location.origin) return;
-    const data = event.data as { type?: string; comment?: string; id?: string } | undefined;
+    const data = event.data as
+      | { type?: string; comment?: string; id?: string; queue?: FeedbackItem[]; scrollY?: number }
+      | undefined;
     if (!data || typeof data.type !== "string") return;
 
     switch (data.type) {
@@ -282,10 +284,54 @@
       case "inkloop:send":
         void sendQueue();
         break;
+      case "inkloop:restore-draft":
+        restoreDraft(data.queue, data.scrollY);
+        break;
       default:
         break;
     }
   });
+
+  /**
+   * Re-applies unsent queue items and scroll position the review shell handed back after a live
+   * reload (issue #8) reloaded this iframe from scratch. The shell already holds this state
+   * continuously via the inkloop:queue/inkloop:scroll messages below — sent unconditionally on
+   * every inkloop:ready, including the very first (non-reload) load, where both are empty/zero
+   * and this is a harmless no-op.
+   */
+  function restoreDraft(restoredQueue: FeedbackItem[] | undefined, scrollY: number | undefined): void {
+    if (Array.isArray(restoredQueue)) {
+      queue.length = 0;
+      queue.push(...restoredQueue);
+    }
+    if (typeof scrollY === "number") {
+      // Applied synchronously, not deferred to requestAnimationFrame: rAF callbacks are heavily
+      // throttled (sometimes by seconds) for an iframe that isn't currently visible/focused —
+      // a likely state for exactly this feature, since the whole point of live reload is
+      // picking up an agent's revision while the human isn't necessarily looking at the tab
+      // right then. By the time inkloop:ready fires the document is already parsed and its
+      // layout is already measurable, so there's nothing to wait on here.
+      window.scrollTo(0, scrollY);
+    }
+  }
+
+  // ---- Scroll reporting (issue #8) -------------------------------------------------------
+
+  /** Throttles scroll reports to at most one per SCROLL_REPORT_THROTTLE_MS, via setTimeout
+   * rather than requestAnimationFrame — rAF callbacks are heavily throttled (by seconds, not
+   * just skipped frames) for a backgrounded/unfocused iframe, which would leave the shell's
+   * cached scroll position stale exactly when a reload is most likely to happen without the
+   * human actively watching the tab. setTimeout has no such visibility dependency. */
+  const SCROLL_REPORT_THROTTLE_MS = 100;
+  let scrollReportTimer: ReturnType<typeof setTimeout> | undefined;
+  function reportScroll(): void {
+    if (scrollReportTimer) return;
+    scrollReportTimer = setTimeout(() => {
+      scrollReportTimer = undefined;
+      postToParent({ type: "inkloop:scroll", scrollY: window.scrollY });
+    }, SCROLL_REPORT_THROTTLE_MS);
+  }
+  window.addEventListener("scroll", reportScroll, { passive: true });
 
   async function sendQueue(): Promise<void> {
     if (queue.length === 0) {

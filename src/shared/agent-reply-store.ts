@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { defaultStateRoot, sessionDirByHash } from "./session-store.js";
+import { readFeedback } from "./feedback-store.js";
 
 /**
  * A short summary an agent posts (via `inkloop poll --agent-reply`, issue #7) before polling
@@ -14,6 +15,13 @@ export interface AgentReply {
   message: string;
   /** ISO-8601 timestamp, set by the server when the reply was recorded. */
   createdAt: string;
+  /**
+   * The highest feedback round that had been delivered to the agent as of this reply — i.e.
+   * which round of human annotations this reply is a response to. See FeedbackItem.round's
+   * docstring for the round-numbering scheme. Undefined if no feedback had been delivered yet
+   * (an agent reply posted before ever polling anything).
+   */
+  round?: number;
 }
 
 export const MAX_AGENT_REPLY_LENGTH = 10_000;
@@ -60,7 +68,19 @@ export async function appendAgentReply(
   const dir = sessionDirByHash(hash, stateRoot);
   await mkdir(dir, { recursive: true });
   const existing = await readAgentReplies(hash, stateRoot);
-  const reply: AgentReply = { id: randomUUID(), message: message.trim(), createdAt: new Date().toISOString() };
+
+  const delivered = (await readFeedback(hash, stateRoot)).filter((item) => item.deliveredAt !== undefined);
+  const round = delivered.reduce<number | undefined>(
+    (max, item) => (item.round === undefined ? max : Math.max(max ?? 0, item.round)),
+    undefined,
+  );
+
+  const reply: AgentReply = {
+    id: randomUUID(),
+    message: message.trim(),
+    createdAt: new Date().toISOString(),
+    ...(round === undefined ? {} : { round }),
+  };
   const combined = [...existing, reply];
 
   const target = agentRepliesFile(hash, stateRoot);

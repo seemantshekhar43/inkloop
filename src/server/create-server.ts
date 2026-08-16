@@ -8,6 +8,7 @@ import { isValidFeedbackBatch } from "../shared/feedback.js";
 import { appendAgentReply, isValidAgentReplyMessage } from "../shared/agent-reply-store.js";
 import { renderReviewShell } from "./review-shell.js";
 import { injectSdkScript, readSdkSource, SdkNotBuiltError } from "./inject-sdk.js";
+import { ArtifactWatcher, createArtifactWatcher, waitForChange } from "./watch-artifact.js";
 
 export interface InkloopServer {
   server: http.Server;
@@ -21,6 +22,7 @@ const SESSION_ROUTE = /^\/session\/([0-9a-f]{16})(\/artifact)?\/?$/;
 const FEEDBACK_ROUTE = /^\/session\/([0-9a-f]{16})\/feedback\/?$/;
 const POLL_ROUTE = /^\/session\/([0-9a-f]{16})\/poll\/?$/;
 const AGENT_REPLY_ROUTE = /^\/session\/([0-9a-f]{16})\/agent-reply\/?$/;
+const RELOAD_ROUTE = /^\/session\/([0-9a-f]{16})\/reload\/?$/;
 
 /** How often the poll route re-checks for newly-queued feedback while it waits. */
 const POLL_CHECK_INTERVAL_MS = 300;
@@ -235,40 +237,90 @@ async function handleAgentReplyRoute(
   sendJson(res, 201, { reply });
 }
 
+/**
+ * Live reload's long-poll route (issue #8): mirrors handlePollRoute's shape (bounded wait,
+ * returns promptly on a real event or an empty-ish result on timeout) but waits on an in-process
+ * ArtifactWatcher rather than re-reading a file. `since` is the browser's last-known version;
+ * responds immediately if the watcher has already moved past it, otherwise waits up to
+ * pollTimeoutMs via watch-artifact.ts's waitForChange. The browser re-issues on every response
+ * (whether or not the version advanced) with `since` set to whatever version it just saw, the
+ * same re-issue-on-empty-result pattern `inkloop poll` uses.
+ *
+ * A watcher is created lazily on first request for a session hash and kept for the server
+ * process's lifetime (see the `watchers` map in createInkloopServer and its close()).
+ */
+async function handleReloadRoute(
+  res: http.ServerResponse,
+  hash: string,
+  since: number,
+  pollTimeoutMs: number,
+  watchers: Map<string, ArtifactWatcher>,
+): Promise<void> {
+  const record = await readSessionRecordByHash(hash);
+  if (!record) {
+    sendJson(res, 404, { error: "session_not_found" });
+    return;
+  }
+
+  let watcher = watchers.get(hash);
+  if (!watcher) {
+    watcher = await createArtifactWatcher(record.filePath);
+    watchers.set(hash, watcher);
+  }
+
+  const version = await waitForChange(watcher, since, pollTimeoutMs);
+  sendJson(res, 200, { version });
+}
+
 async function handleRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   config: ServerConfig,
+  watchers: Map<string, ArtifactWatcher>,
 ): Promise<void> {
-  if (req.method === "GET" && req.url === "/health") {
+  // Parsed once so every route below matches on the path alone — query strings (the reload
+  // route's ?since=, and the review shell's cache-busting ?v= on the artifact route after a
+  // reload) never have to be stripped ad hoc per route.
+  const url = new URL(req.url ?? "/", "http://internal");
+  const pathname = url.pathname;
+
+  if (req.method === "GET" && pathname === "/health") {
     sendJson(res, 200, { status: "ok", service: "inkloop" });
     return;
   }
 
-  if (req.method === "GET" && req.url === "/sdk.js") {
+  if (req.method === "GET" && pathname === "/sdk.js") {
     await handleSdkRoute(res);
     return;
   }
 
-  const feedbackMatch = req.url ? FEEDBACK_ROUTE.exec(req.url) : null;
+  const feedbackMatch = FEEDBACK_ROUTE.exec(pathname);
   if (req.method === "POST" && feedbackMatch) {
     await handleFeedbackRoute(req, res, feedbackMatch[1] as string);
     return;
   }
 
-  const pollMatch = req.url ? POLL_ROUTE.exec(req.url) : null;
+  const pollMatch = POLL_ROUTE.exec(pathname);
   if (req.method === "GET" && pollMatch) {
     await handlePollRoute(res, pollMatch[1] as string, config.pollTimeoutMs);
     return;
   }
 
-  const agentReplyMatch = req.url ? AGENT_REPLY_ROUTE.exec(req.url) : null;
+  const agentReplyMatch = AGENT_REPLY_ROUTE.exec(pathname);
   if (req.method === "POST" && agentReplyMatch) {
     await handleAgentReplyRoute(req, res, agentReplyMatch[1] as string);
     return;
   }
 
-  const match = req.url ? SESSION_ROUTE.exec(req.url) : null;
+  const reloadMatch = RELOAD_ROUTE.exec(pathname);
+  if (req.method === "GET" && reloadMatch) {
+    const sinceParam = Number.parseInt(url.searchParams.get("since") ?? "0", 10);
+    const since = Number.isFinite(sinceParam) && sinceParam >= 0 ? sinceParam : 0;
+    await handleReloadRoute(res, reloadMatch[1] as string, since, config.pollTimeoutMs, watchers);
+    return;
+  }
+
+  const match = SESSION_ROUTE.exec(pathname);
   if (req.method === "GET" && match) {
     const [, hash, artifactSuffix] = match;
     await handleSessionRoute(res, hash as string, Boolean(artifactSuffix));
@@ -290,13 +342,16 @@ async function handleRequest(
  * shell), GET /session/:hash/artifact (the artifact file, with the SDK <script> injected at
  * serve time), POST /session/:hash/feedback (queue a batch of drafted annotations),
  * GET /session/:hash/poll (long-poll for queued feedback, consumed by `inkloop poll`),
- * POST /session/:hash/agent-reply (record an agent's revision summary ahead of its next poll).
+ * POST /session/:hash/agent-reply (record an agent's revision summary ahead of its next poll),
+ * GET /session/:hash/reload (browser-side live-reload long-poll, watches the artifact and its
+ * declared sibling assets for changes).
  */
 export function createInkloopServer(
   config: ServerConfig,
   onIdleTimeout?: () => void,
 ): InkloopServer {
   let lastActivity = Date.now();
+  const watchers = new Map<string, ArtifactWatcher>();
 
   const server = http.createServer((req, res) => {
     lastActivity = Date.now();
@@ -310,7 +365,7 @@ export function createInkloopServer(
       return;
     }
 
-    handleRequest(req, res, config).catch((err: unknown) => {
+    handleRequest(req, res, config, watchers).catch((err: unknown) => {
       process.stderr.write(
         `[inkloop] request handler error: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
       );
@@ -339,6 +394,8 @@ export function createInkloopServer(
 
   function close(): Promise<void> {
     if (idleTimer) clearInterval(idleTimer);
+    for (const watcher of watchers.values()) watcher.close();
+    watchers.clear();
     return new Promise((resolve, reject) => {
       server.close((err) => (err ? reject(err) : resolve()));
     });

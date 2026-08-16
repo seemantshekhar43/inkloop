@@ -69,6 +69,19 @@ void test("escapes untrusted queue content before interpolating it into pill mar
   assert.match(html, /escapeHtml\(String\(item\.target\.quote\)/);
 });
 
+void test("live reload (issue #8): long-polls /reload, reloads the iframe on a version bump, and restores draft state on inkloop:ready", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, new RegExp(`SESSION_HASH = ${JSON.stringify(HASH)}`));
+  assert.match(html, /\/session\/' \+ SESSION_HASH \+ '\/reload\?since=/);
+  assert.match(html, /\/session\/' \+ SESSION_HASH \+ '\/artifact\?v=/);
+  assert.match(html, /function pollReload/);
+  // Fires on every inkloop:ready — including the iframe's very first load, not just reloads —
+  // handing the fresh SDK instance back its unsent queue and last-known scroll position.
+  assert.match(html, /data\.type === 'inkloop:ready'/);
+  assert.match(html, /type: 'inkloop:restore-draft', queue: items, scrollY: lastScrollY/);
+  assert.match(html, /data\.type === 'inkloop:scroll'/);
+});
+
 void test("different hashes render distinct, non-colliding shells", () => {
   const other = "b".repeat(16);
   const htmlA = renderReviewShell(HASH);
