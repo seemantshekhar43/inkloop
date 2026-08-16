@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-const CLOSING_BODY_TAG = /<\/body\s*>/i;
+const CLOSING_BODY_TAG = /<\/body\s*>/gi;
 const SDK_SCRIPT_TAG = '<script src="/sdk.js"></script>';
 
 /**
@@ -12,11 +12,19 @@ const SDK_SCRIPT_TAG = '<script src="/sdk.js"></script>';
  *
  * Inserted just before </body> when present; appended at the end otherwise (the artifact may be
  * a bare HTML fragment with no <body> tag at all).
+ *
+ * Uses the *last* </body> match, not the first: an artifact can legitimately contain the literal
+ * substring "</body>" before its real closing tag (a comment or code sample documenting HTML, for
+ * instance — see docs/examples/mermaid-artifact.html's own header comment). A first-match replace
+ * would splice the script tag into that earlier occurrence instead, where — inside an HTML
+ * comment, say — it never executes and the SDK silently fails to load.
  */
 export function injectSdkScript(html: string): string {
-  return CLOSING_BODY_TAG.test(html)
-    ? html.replace(CLOSING_BODY_TAG, `${SDK_SCRIPT_TAG}</body>`)
-    : `${html}\n${SDK_SCRIPT_TAG}\n`;
+  const matches = [...html.matchAll(CLOSING_BODY_TAG)];
+  const last = matches[matches.length - 1];
+  if (!last) return `${html}\n${SDK_SCRIPT_TAG}\n`;
+  const idx = last.index;
+  return `${html.slice(0, idx)}${SDK_SCRIPT_TAG}${html.slice(idx)}`;
 }
 
 /**
