@@ -5,6 +5,23 @@ import path from "node:path";
 
 export type SessionStatus = "opened" | "agent-ended" | "user-ended";
 
+/**
+ * Human-readable guidance for what an agent should do next, given a session's terminal status.
+ * Shared by the poll route's "ended" response (issue #7) and `inkloop end`'s own output (issue
+ * #9) so both surfaces describe the same reopen semantics in the same words. Returns undefined
+ * for "opened" — there's nothing to guide the agent about while a session is still active.
+ */
+export function nextStepGuidance(status: SessionStatus): string | undefined {
+  switch (status) {
+    case "agent-ended":
+      return "You ended this session. A later `inkloop <file>` may reopen it freely if further review is needed.";
+    case "user-ended":
+      return "The user ended this session from the browser. A later `inkloop <file>` will refuse to reopen it unless run with --reopen.";
+    case "opened":
+      return undefined;
+  }
+}
+
 export interface SessionRecord {
   /** Absolute path of the artifact this session reviews. */
   filePath: string;

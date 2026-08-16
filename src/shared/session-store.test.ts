@@ -9,6 +9,7 @@ import {
   readSessionRecord,
   openOrResumeSession,
   endSession,
+  nextStepGuidance,
   SessionNotFoundError,
   SessionCorruptError,
 } from "./session-store.js";
@@ -140,4 +141,10 @@ void test("writes are atomic: no partial session.json is ever left on disk", asy
   const raw = await readFile(path.join(dir, "session.json"), "utf8");
   // A partial/truncated write would fail to parse; a fully-written file always parses.
   assert.doesNotThrow(() => JSON.parse(raw));
+});
+
+void test("nextStepGuidance: describes reopen semantics per status, undefined while still opened", () => {
+  assert.equal(nextStepGuidance("opened"), undefined);
+  assert.match(nextStepGuidance("agent-ended") ?? "", /may reopen it freely/);
+  assert.match(nextStepGuidance("user-ended") ?? "", /refuse to reopen it unless run with --reopen/);
 });

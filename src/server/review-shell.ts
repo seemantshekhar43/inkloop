@@ -69,6 +69,19 @@ export function renderReviewShell(hash: string): string {
   }
   button.pick:hover { border-color: var(--ink-accent); }
   button.pick.active { background: var(--ink-accent); border-color: var(--ink-accent); color: var(--ink-accent-text); }
+  button.end-session {
+    appearance: none; border: 1px solid var(--ink-border); background: transparent;
+    color: var(--ink-error); padding: var(--space-2) var(--space-3); border-radius: 6px;
+    font: inherit; cursor: pointer; transition: background-color 0.12s ease, border-color 0.12s ease;
+  }
+  button.end-session:hover { border-color: var(--ink-error); background: rgba(255, 107, 107, 0.1); }
+  button.end-session:disabled { opacity: 0.4; cursor: default; }
+  .ended-banner {
+    flex: 0 0 auto; display: none; align-items: center;
+    padding: var(--space-2) var(--space-4); font-size: 12px; color: var(--ink-accent-text);
+    background: var(--ink-error); border-bottom: 1px solid var(--ink-border);
+  }
+  .ended-banner.visible { display: flex; }
   .picking-hint {
     flex: 0 0 auto; display: none; align-items: center;
     padding: var(--space-2) var(--space-4); font-size: 12px; color: var(--ink-accent-text);
@@ -110,6 +123,7 @@ export function renderReviewShell(hash: string): string {
     border-radius: 6px; padding: var(--space-2); font: inherit;
   }
   .composer-row textarea:focus { outline: none; border-color: var(--ink-accent); }
+  .composer-row textarea:disabled { opacity: 0.4; cursor: default; }
   .composer-row button {
     appearance: none; border: 0; border-radius: 6px; padding: 0 var(--space-4); font: inherit;
     cursor: pointer; background: var(--ink-accent); color: var(--ink-accent-text);
@@ -134,8 +148,10 @@ export function renderReviewShell(hash: string): string {
   <span class="wordmark">inkloop</span>
   <span class="session-path">session ${hash}</span>
   <button type="button" class="pick" id="pick-btn">Select element</button>
+  <button type="button" class="end-session" id="end-btn">End session</button>
 </header>
 <div class="picking-hint" id="picking-hint">Click an element in the artifact to annotate it — click “Select element” again to cancel.</div>
+<div class="ended-banner" id="ended-banner">Session ended. Run <code>inkloop</code> on this file again with <code>--reopen</code> to resume review.</div>
 <main>
   <iframe id="artifact-frame" src="/session/${hash}/artifact" title="artifact preview"></iframe>
 </main>
@@ -153,6 +169,8 @@ export function renderReviewShell(hash: string): string {
 (function () {
   var iframe = document.getElementById('artifact-frame');
   var pickBtn = document.getElementById('pick-btn');
+  var endBtn = document.getElementById('end-btn');
+  var endedBanner = document.getElementById('ended-banner');
   var pickingHint = document.getElementById('picking-hint');
   var thread = document.getElementById('thread');
   var composer = document.getElementById('composer');
@@ -161,6 +179,8 @@ export function renderReviewShell(hash: string): string {
   var picking = false;
   var items = [];
   var lastScrollY = 0;
+  var ended = false;
+  var reloadPollingActive = true;
   var SESSION_HASH = ${JSON.stringify(hash)};
 
   function escapeHtml(value) {
@@ -212,6 +232,40 @@ export function renderReviewShell(hash: string): string {
     pickBtn.classList.toggle('active', picking);
     pickingHint.classList.toggle('visible', picking);
   }
+
+  /**
+   * User-initiated end (issue #9): disables every interaction the shell offers once the session
+   * is over — there's nothing meaningful left for a human to annotate or an agent to receive,
+   * since the server refuses a later plain inkloop-open call to reopen without --reopen. Reload
+   * polling stops too (reloadPollingActive below) — no point watching a file for a session no
+   * longer being reviewed.
+   */
+  function markEnded() {
+    ended = true;
+    reloadPollingActive = false;
+    endedBanner.classList.add('visible');
+    endBtn.disabled = true;
+    pickBtn.disabled = true;
+    sendBtn.disabled = true;
+    composer.disabled = true;
+    if (picking) postToFrame({ type: 'inkloop:toggle-element-picker' });
+  }
+
+  endBtn.addEventListener('click', function () {
+    if (ended) return;
+    if (!window.confirm('End this review session? A later inkloop <file> will need --reopen to resume it.')) return;
+    endBtn.disabled = true;
+    fetch('/session/' + SESSION_HASH + '/end', { method: 'POST' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('server responded ' + res.status);
+        markEnded();
+        setStatus('Session ended.', 'success');
+      })
+      .catch(function (err) {
+        endBtn.disabled = false;
+        setStatus('Failed to end session: ' + err.message, 'error');
+      });
+  });
 
   pickBtn.addEventListener('click', function () {
     // Don't flip local state optimistically here — picking mode also turns itself off inside
@@ -291,6 +345,7 @@ export function renderReviewShell(hash: string): string {
   // route itself is what bounds request frequency.
 
   function pollReload(sinceVersion) {
+    if (!reloadPollingActive) return;
     fetch('/session/' + SESSION_HASH + '/reload?since=' + sinceVersion)
       .then(function (res) { return res.json(); })
       .then(function (data) {

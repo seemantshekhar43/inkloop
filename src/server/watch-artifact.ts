@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
-import { existsSync, watch, type FSWatcher } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { existsSync, statSync, watch, type FSWatcher } from "node:fs";
+import { readFile, stat } from "node:fs/promises";
 import path from "node:path";
 
 /** Coalesces rapid successive saves (e.g. an editor's atomic write plus a formatter re-save)
@@ -53,9 +53,17 @@ export class ArtifactWatcher extends EventEmitter {
   private version = 0;
   private readonly watchers: FSWatcher[] = [];
   private debounceTimer: NodeJS.Timeout | undefined;
+  private readonly targets: readonly string[];
+  /** Last-observed mtime per target, undefined meaning "didn't exist". Used to confirm a real
+   * change happened before bumping version — see scheduleBump's docstring for why. */
+  private readonly mtimes = new Map<string, number | undefined>();
 
   constructor(artifactPath: string, siblingPaths: readonly string[]) {
     super();
+    this.targets = [artifactPath, ...siblingPaths];
+    for (const target of this.targets) {
+      this.mtimes.set(target, statMtimeSync(target));
+    }
 
     // Watches each target's parent directory rather than the file itself, filtering events by
     // basename. Watching a file path directly misses atomic saves that replace it via
@@ -64,7 +72,7 @@ export class ArtifactWatcher extends EventEmitter {
     // silently orphans it). A directory watch's rename events fire regardless of the inode
     // churn underneath, so live reload survives both plain in-place writes and atomic replaces.
     const targetsByDir = new Map<string, Set<string>>();
-    for (const target of [artifactPath, ...siblingPaths]) {
+    for (const target of this.targets) {
       const dir = path.dirname(target);
       const basenames = targetsByDir.get(dir) ?? new Set<string>();
       basenames.add(path.basename(target));
@@ -77,7 +85,7 @@ export class ArtifactWatcher extends EventEmitter {
           watch(dir, (_eventType, filename) => {
             // A null filename (platform-dependent) means "something changed in here, exact
             // file unknown" — treat that as a match too rather than silently missing it; the
-            // debounce below means an over-eager bump costs nothing but one extra reload.
+            // mtime check in scheduleBump means an over-eager trigger costs nothing.
             if (filename === null || basenames.has(filename)) this.scheduleBump();
           }),
         );
@@ -88,13 +96,34 @@ export class ArtifactWatcher extends EventEmitter {
     }
   }
 
+  /**
+   * Debounces rapid successive fs events into one check, then confirms an actual mtime change
+   * before bumping version — not just any fs.watch callback firing. This matters beyond
+   * coalescing bursts: fs.watch on directories (macOS's FSEvents backend in particular) can
+   * deliver a spurious event right as a watch is set up, replaying recent history for files that
+   * already existed — which is exactly the state every session starts in, since the artifact was
+   * just written to disk moments before `inkloop <file>` was run. Without this check, the very
+   * first /reload poll of a session could report a version bump for a file that never actually
+   * changed.
+   */
   private scheduleBump(): void {
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = setTimeout(() => {
       this.debounceTimer = undefined;
-      this.version += 1;
-      this.emit("change", this.version);
+      void this.checkForRealChange();
     }, CHANGE_DEBOUNCE_MS);
+  }
+
+  private async checkForRealChange(): Promise<void> {
+    let changed = false;
+    for (const target of this.targets) {
+      const mtimeMs = await statMtime(target);
+      if (mtimeMs !== this.mtimes.get(target)) changed = true;
+      this.mtimes.set(target, mtimeMs);
+    }
+    if (!changed) return;
+    this.version += 1;
+    this.emit("change", this.version);
   }
 
   getVersion(): number {
@@ -104,6 +133,22 @@ export class ArtifactWatcher extends EventEmitter {
   close(): void {
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     for (const w of this.watchers) w.close();
+  }
+}
+
+function statMtimeSync(target: string): number | undefined {
+  try {
+    return statSync(target).mtimeMs;
+  } catch {
+    return undefined;
+  }
+}
+
+async function statMtime(target: string): Promise<number | undefined> {
+  try {
+    return (await stat(target)).mtimeMs;
+  } catch {
+    return undefined;
   }
 }
 

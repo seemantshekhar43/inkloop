@@ -82,6 +82,22 @@ void test("live reload (issue #8): long-polls /reload, reloads the iframe on a v
   assert.match(html, /data\.type === 'inkloop:scroll'/);
 });
 
+void test("session lifecycle (issue #9): renders an End session control, confirms before ending, and disables interactions once ended", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /<button type="button" class="end-session" id="end-btn">End session<\/button>/);
+  assert.match(html, /id="ended-banner"/);
+  assert.match(html, /window\.confirm\(/);
+  assert.match(html, new RegExp(`fetch\\('/session/' \\+ SESSION_HASH \\+ '/end'`));
+  assert.match(html, /function markEnded/);
+  assert.match(html, /pickBtn\.disabled = true/);
+  assert.match(html, /sendBtn\.disabled = true/);
+  assert.match(html, /composer\.disabled = true/);
+  // Live reload polling stops once ended — no point watching a file for a session no longer
+  // under review.
+  assert.match(html, /reloadPollingActive = false/);
+  assert.match(html, /if \(!reloadPollingActive\) return;/);
+});
+
 void test("different hashes render distinct, non-colliding shells", () => {
   const other = "b".repeat(16);
   const htmlA = renderReviewShell(HASH);
