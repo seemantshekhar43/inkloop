@@ -22,6 +22,25 @@ export function nextStepGuidance(status: SessionStatus): string | undefined {
   }
 }
 
+/**
+ * Guidance for `inkloop <file>` once a session URL has been printed (issue #39). Same text
+ * whether the session was freshly opened or resumed — the next action is always the same, and
+ * unlike nextStepGuidance() above this isn't keyed off session status at all.
+ */
+export const OPEN_NEXT_STEP =
+  "Share this URL with the human if they don't already have it, then run `inkloop poll <file>` " +
+  "and leave it running (foreground, or a tracked background job with a guaranteed callback) " +
+  "until feedback arrives.";
+
+/**
+ * Guidance for `inkloop poll <file>` once it returns a feedback batch and the session is still
+ * open (issue #39). The ended case reuses nextStepGuidance() instead, via the same `next_step`
+ * field — see poll.ts.
+ */
+export const POLL_FEEDBACK_NEXT_STEP =
+  'Revise the artifact based on this feedback, then run `inkloop poll <file> --agent-reply ' +
+  '"<one-line summary of what changed>"` for the next round.';
+
 export interface SessionRecord {
   /** Absolute path of the artifact this session reviews. */
   filePath: string;

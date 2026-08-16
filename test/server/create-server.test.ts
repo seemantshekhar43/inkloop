@@ -637,7 +637,7 @@ void test("reload route: times out at the current version with no change, and pi
 
     const timedOut = await request(port, `/session/${hash}/reload?since=0`, { host: "127.0.0.1" });
     assert.equal(timedOut.status, 200);
-    assert.deepEqual(timedOut.body, { version: 0 });
+    assert.deepEqual(timedOut.body, { version: 0, otherTabActive: false });
 
     const reloadPromise = request(port, `/session/${hash}/reload?since=0`, { host: "127.0.0.1" });
     setTimeout(() => {
@@ -653,6 +653,45 @@ void test("reload route: times out at the current version with no change, and pi
     const unknownHash = "0".repeat(16);
     const missing = await request(port, `/session/${unknownHash}/reload?since=0`, { host: "127.0.0.1" });
     assert.equal(missing.status, 404);
+  } finally {
+    await instance.close();
+    process.env["INKLOOP_STATE_DIR"] = originalStateDir;
+    await rm(stateRoot, { recursive: true, force: true });
+    await rm(artifactDir, { recursive: true, force: true });
+  }
+});
+
+void test("reload route: flags otherTabActive once a second tab's ?tab= id is seen, and stays unflagged for a single tab (issue #40)", async () => {
+  const stateRoot = await mkdtemp(path.join(os.tmpdir(), "inkloop-tab-presence-test-"));
+  const artifactDir = await mkdtemp(path.join(os.tmpdir(), "inkloop-tab-presence-artifact-"));
+  const originalStateDir = process.env["INKLOOP_STATE_DIR"];
+  process.env["INKLOOP_STATE_DIR"] = stateRoot;
+
+  const artifactPath = path.join(artifactDir, "artifact.html");
+  await writeFile(artifactPath, "<p>v1</p>", "utf8");
+
+  // A short pollTimeoutMs (each unchanged-artifact reload call blocks for the full timeout) kept
+  // well under the tracker's 3x-pollTimeoutMs staleness window (see create-server.ts), so the two
+  // sequential round trips below can't accidentally push the first tab's record past staleness.
+  const instance = createInkloopServer(baseConfig({ pollTimeoutMs: 150 }));
+  const port = await instance.listening;
+  try {
+    await openOrResumeSession(artifactPath);
+    const hash = hashArtifactPath(artifactPath);
+
+    // A lone tab never sees the banner.
+    const solo = await request(port, `/session/${hash}/reload?since=0&tab=tab-a`, { host: "127.0.0.1" });
+    assert.equal((solo.body as { otherTabActive: boolean }).otherTabActive, false);
+
+    // A second tab id shows up: it sees the first tab immediately.
+    const secondTabSees = await request(port, `/session/${hash}/reload?since=0&tab=tab-b`, {
+      host: "127.0.0.1",
+    });
+    assert.equal((secondTabSees.body as { otherTabActive: boolean }).otherTabActive, true);
+
+    // A pre-#40 client with no ?tab= at all is unaffected either way — no crash, no false flag.
+    const noTabParam = await request(port, `/session/${hash}/reload?since=0`, { host: "127.0.0.1" });
+    assert.equal((noTabParam.body as { otherTabActive: boolean }).otherTabActive, false);
   } finally {
     await instance.close();
     process.env["INKLOOP_STATE_DIR"] = originalStateDir;

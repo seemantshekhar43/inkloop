@@ -36,7 +36,9 @@ You do not need inkloop installed globally - invoke it with `npx -y inkloop <htm
 3. Run `npx -y inkloop poll <html-file>` to long-poll for the human's queued annotations. This
    blocks, retrying automatically on each empty result, until feedback actually arrives - leave it
    running rather than working around it. Progress goes to stderr; the only thing written to stdout
-   is the final feedback batch, as JSON.
+   is the final payload, as JSON: `{ items, next_step, ... }`. `next_step` spells out the literal
+   next command - trust it over re-deriving the loop from memory, especially once a session has
+   ended (`ended`/`endedBy` ride along too in that case).
    On rounds after the first, pass `--agent-reply "<one-line summary of what changed>"` so the
    round-history panel shows your reply before the poll blocks again.
 4. Revise the `.html` file in place based on the feedback. No need to re-run `inkloop <file>` - the

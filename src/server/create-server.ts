@@ -15,6 +15,7 @@ import { readSessionHistory } from "../shared/history.js";
 import { renderReviewShell } from "./review-shell.js";
 import { injectSdkScript, readSdkSource, SdkNotBuiltError } from "./inject-sdk.js";
 import { ArtifactWatcher, createArtifactWatcher, waitForChange } from "./watch-artifact.js";
+import { createTabPresenceTracker, type TabPresenceTracker } from "./tab-presence.js";
 
 export interface InkloopServer {
   server: http.Server;
@@ -337,6 +338,12 @@ async function handleHistoryRoute(res: http.ServerResponse, hash: string): Promi
  *
  * A watcher is created lazily on first request for a session hash and kept for the server
  * process's lifetime (see the `watchers` map in createInkloopServer and its close()).
+ *
+ * Also doubles as the per-tab presence heartbeat behind the "open in another tab" banner (issue
+ * #40): when the request carries a `tab` id, it's recorded via `tabs` and the response says
+ * whether some other tab has been seen recently — see tab-presence.ts for the tracking rules.
+ * `tabId` is undefined for any client that predates this query param, in which case presence
+ * tracking is simply skipped for that request (no banner, same as before this issue).
  */
 async function handleReloadRoute(
   res: http.ServerResponse,
@@ -344,6 +351,8 @@ async function handleReloadRoute(
   since: number,
   pollTimeoutMs: number,
   watchers: Map<string, ArtifactWatcher>,
+  tabs: TabPresenceTracker,
+  tabId: string | undefined,
 ): Promise<void> {
   const record = await readSessionRecordByHash(hash);
   if (!record) {
@@ -358,7 +367,8 @@ async function handleReloadRoute(
   }
 
   const version = await waitForChange(watcher, since, pollTimeoutMs);
-  sendJson(res, 200, { version });
+  const otherTabActive = tabId !== undefined ? tabs.record(hash, tabId) : false;
+  sendJson(res, 200, { version, otherTabActive });
 }
 
 /**
@@ -388,6 +398,7 @@ async function handleRequest(
   res: http.ServerResponse,
   config: ServerConfig,
   watchers: Map<string, ArtifactWatcher>,
+  tabs: TabPresenceTracker,
 ): Promise<void> {
   // Parsed once so every route below matches on the path alone — query strings (the reload
   // route's ?since=, and the review shell's cache-busting ?v= on the artifact route after a
@@ -439,7 +450,16 @@ async function handleRequest(
   if (req.method === "GET" && reloadMatch) {
     const sinceParam = Number.parseInt(url.searchParams.get("since") ?? "0", 10);
     const since = Number.isFinite(sinceParam) && sinceParam >= 0 ? sinceParam : 0;
-    await handleReloadRoute(res, reloadMatch[1] as string, since, config.pollTimeoutMs, watchers);
+    const tabId = url.searchParams.get("tab") ?? undefined;
+    await handleReloadRoute(
+      res,
+      reloadMatch[1] as string,
+      since,
+      config.pollTimeoutMs,
+      watchers,
+      tabs,
+      tabId,
+    );
     return;
   }
 
@@ -476,8 +496,9 @@ async function handleRequest(
  * review shell's round-history panel), POST /session/:hash/drift (the SDK reports text-range
  * targets whose live content fingerprint no longer matches what was captured at queue time),
  * GET /session/:hash/reload (browser-side live-reload long-poll, watches the artifact and its
- * declared sibling assets for changes), POST /session/:hash/end (user-initiated session end,
- * the browser's "End session" button).
+ * declared sibling assets for changes, and doubles as the issue #40 tab-presence heartbeat when
+ * called with ?tab=), POST /session/:hash/end (user-initiated session end, the browser's
+ * "End session" button).
  */
 export function createInkloopServer(
   config: ServerConfig,
@@ -485,6 +506,12 @@ export function createInkloopServer(
 ): InkloopServer {
   let lastActivity = Date.now();
   const watchers = new Map<string, ArtifactWatcher>();
+  // A tab not seen for a few full reload-poll round-trips is treated as gone (closed,
+  // backgrounded past any browser throttling, or a dead connection) rather than a live second
+  // tab — see tab-presence.ts's docstring for why the reload long-poll doubles as this heartbeat.
+  // The 3x multiplier leaves headroom past the bare minimum of "one round-trip per tab" so a
+  // slow tick (event-loop or network jitter) doesn't flap the banner on and off.
+  const tabs = createTabPresenceTracker(config.pollTimeoutMs * 3);
 
   const server = http.createServer((req, res) => {
     lastActivity = Date.now();
@@ -498,7 +525,7 @@ export function createInkloopServer(
       return;
     }
 
-    handleRequest(req, res, config, watchers).catch((err: unknown) => {
+    handleRequest(req, res, config, watchers, tabs).catch((err: unknown) => {
       process.stderr.write(
         `[inkloop] request handler error: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
       );

@@ -99,6 +99,12 @@ export function renderReviewShell(hash: string): string {
     background: var(--ink-error); border-bottom: 1px solid var(--ink-border);
   }
   .ended-banner.visible { display: flex; }
+  .tab-banner {
+    flex: 0 0 auto; display: none; align-items: center;
+    padding: var(--space-2) var(--space-4); font-size: 12px; color: var(--ink-agent);
+    background: var(--ink-agent-soft); border-bottom: 1px solid var(--ink-border);
+  }
+  .tab-banner.visible { display: flex; }
   .picking-hint {
     flex: 0 0 auto; display: none; align-items: center;
     padding: var(--space-2) var(--space-4); font-size: 12px; color: var(--ink-accent-text);
@@ -220,6 +226,7 @@ export function renderReviewShell(hash: string): string {
 </header>
 <div class="picking-hint" id="picking-hint">Click an element in the artifact to annotate it — click “Select element” again to cancel.</div>
 <div class="ended-banner" id="ended-banner">Session ended. Run <code>inkloop</code> on this file again with <code>--reopen</code> to resume review.</div>
+<div class="tab-banner" id="tab-banner">This session may be open in another tab — annotations from both could interleave.</div>
 <main>
   <iframe id="artifact-frame" src="/session/${hash}/artifact" title="artifact preview"></iframe>
 </main>
@@ -244,6 +251,7 @@ export function renderReviewShell(hash: string): string {
   var pickLabel = document.getElementById('pick-label');
   var endBtn = document.getElementById('end-btn');
   var endedBanner = document.getElementById('ended-banner');
+  var tabBanner = document.getElementById('tab-banner');
   var pickingHint = document.getElementById('picking-hint');
   var thread = document.getElementById('thread');
   var composer = document.getElementById('composer');
@@ -260,6 +268,27 @@ export function renderReviewShell(hash: string): string {
   var reloadPollingActive = true;
   var historyExpanded = false;
   var SESSION_HASH = ${JSON.stringify(hash)};
+
+  // Issue #40: a per-tab id, stable for this tab's lifetime (sessionStorage, not localStorage —
+  // a duplicated tab or a fresh page load in the same tab both get a new id, which is what
+  // "another tab" should mean here) but different from any other tab's, including one opened on
+  // the exact same session URL. Sent on every reload poll below so the server can tell two live
+  // tabs apart without any explicit pairing step.
+  function makeTabId() {
+    return Math.random().toString(36).slice(2) + Date.now().toString(36);
+  }
+  var TAB_ID = (function () {
+    try {
+      var key = 'inkloop-tab-id:' + SESSION_HASH;
+      var existing = window.sessionStorage.getItem(key);
+      if (existing) return existing;
+      var fresh = makeTabId();
+      window.sessionStorage.setItem(key, fresh);
+      return fresh;
+    } catch (e) {
+      return makeTabId();
+    }
+  })();
 
   function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, function (c) {
@@ -515,13 +544,18 @@ export function renderReviewShell(hash: string): string {
 
   function pollReload(sinceVersion) {
     if (!reloadPollingActive) return;
-    fetch('/session/' + SESSION_HASH + '/reload?since=' + sinceVersion)
+    fetch('/session/' + SESSION_HASH + '/reload?since=' + sinceVersion + '&tab=' + encodeURIComponent(TAB_ID))
       .then(function (res) { return res.json(); })
       .then(function (data) {
         var version = data.version || 0;
         if (version > sinceVersion) {
           iframe.src = '/session/' + SESSION_HASH + '/artifact?v=' + version;
         }
+        // Issue #40: same long-poll cadence doubles as this tab's presence heartbeat — see
+        // tab-presence.ts. Not sticky once true: if the other tab goes stale (closed, or this
+        // banner was reacting to a leftover tab from an earlier sitting), the banner clears on
+        // the next tick same as it appeared.
+        tabBanner.classList.toggle('visible', Boolean(data.otherTabActive));
         // Piggybacks the history refresh on this same long-poll cadence (issue #21) so an
         // agent's --agent-reply flag, which has no other signal reaching this shell, still shows
         // up within one reload tick, without standing up a second long-poll loop just for it.
