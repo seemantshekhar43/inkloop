@@ -6,8 +6,9 @@ agent long-polls for it and iterates — no accounts, no cloud dependency in the
 
 **Status: `inkloop <file>` opens or resumes a session and serves the artifact (issue #4), with the injected
 browser SDK (issue #5) and review UI shell (issue #6) driving annotation and queuing, `inkloop poll <file>`
-long-polling for feedback (issue #7), live reload with scroll/draft preservation (issue #8), and
-`inkloop end <file>` plus the browser's "End session" button closing out a session (issue #9).** See
+long-polling for feedback (issue #7), live reload with scroll/draft preservation (issue #8),
+`inkloop end <file>` plus the browser's "End session" button closing out a session (issue #9), and drift
+detection flagging text-range annotations whose anchored text has since changed (issue #10).** See
 [`docs/plan.md`](docs/plan.md) for the full prior-art study, v1 scope decision, naming rationale, and tech
 stack proposal.
 
