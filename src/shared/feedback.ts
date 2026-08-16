@@ -14,8 +14,16 @@ export interface FeedbackTarget {
   /** Character offsets of the selection within the anchor element's textContent. */
   startOffset?: number;
   endOffset?: number;
-  /** The selected text itself, captured for future drift detection (issue #10). */
+  /** The selected text itself, captured for drift detection (issue #10). */
   quote?: string;
+  /**
+   * A short content fingerprint of the anchor element's live textContent, captured by the SDK
+   * at the moment the annotation was queued (see sdk/index.ts's fingerprint()). Only meaningful
+   * for "text-range" targets — the browser recomputes this against the *current* DOM on every
+   * artifact load/reload and, on a mismatch, reports drift back to the server (see
+   * FeedbackItem.drifted below) instead of leaving the agent to resolve against stale context.
+   */
+  fingerprint?: string;
 }
 
 export interface FeedbackItem {
@@ -42,6 +50,16 @@ export interface FeedbackItem {
    * appendFeedback for where it's assigned.
    */
   round?: number;
+  /**
+   * Set server-side (never by the client) once the browser has detected that this item's
+   * anchored text range no longer matches the live artifact — see shared/feedback-store.ts's
+   * markFeedbackDrifted and the POST /session/:hash/drift route it backs. `inkloop poll` returns
+   * this flag as-is alongside the rest of the item, so the agent can ask the human to re-anchor
+   * rather than guessing which passage a stale quote/offsets pair was meant to point at.
+   */
+  drifted?: boolean;
+  /** ISO-8601 timestamp of when drift was detected, paired with `drifted`. */
+  driftedAt?: string;
 }
 
 /** Hard caps enforced on inbound feedback batches — an unauthenticated local server still
@@ -50,6 +68,11 @@ export const MAX_FEEDBACK_BATCH_SIZE = 200;
 export const MAX_COMMENT_LENGTH = 10_000;
 export const MAX_SELECTOR_LENGTH = 2_000;
 export const MAX_QUOTE_LENGTH = 10_000;
+/** Fingerprints are a short hex hash (see sdk/index.ts's fingerprint()), never long-form content. */
+export const MAX_FINGERPRINT_LENGTH = 32;
+/** Hard cap on a single POST /session/:hash/drift body's id batch — same rationale as the
+ * feedback batch cap above. */
+export const MAX_DRIFT_ID_BATCH_SIZE = 200;
 
 const TARGET_KINDS: ReadonlySet<string> = new Set(["element", "text-range", "general"]);
 
@@ -66,6 +89,12 @@ function isValidTarget(value: unknown): value is FeedbackTarget {
     return false;
   }
   if (target["quote"] !== undefined && !isNonEmptyString(target["quote"], MAX_QUOTE_LENGTH)) {
+    return false;
+  }
+  if (
+    target["fingerprint"] !== undefined &&
+    !isNonEmptyString(target["fingerprint"], MAX_FINGERPRINT_LENGTH)
+  ) {
     return false;
   }
   for (const key of ["startOffset", "endOffset"] as const) {
@@ -98,5 +127,17 @@ export function isValidFeedbackBatch(value: unknown): value is FeedbackItem[] {
     value.length > 0 &&
     value.length <= MAX_FEEDBACK_BATCH_SIZE &&
     value.every(isValidFeedbackItem)
+  );
+}
+
+/** Validates a POST /session/:hash/drift body: a non-empty array of feedback item ids, within
+ * the size cap — the SDK's drift check (issue #10) reports every id it found mismatched in one
+ * batch per artifact load/reload rather than one request per item. */
+export function isValidDriftIdBatch(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.length <= MAX_DRIFT_ID_BATCH_SIZE &&
+    value.every((id) => isNonEmptyString(id, 200))
   );
 }

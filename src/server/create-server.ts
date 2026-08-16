@@ -3,8 +3,13 @@ import { readFile } from "node:fs/promises";
 import type { ServerConfig } from "./config.js";
 import { isHostAllowed } from "./host-validation.js";
 import { endSession, nextStepGuidance, readSessionRecordByHash } from "../shared/session-store.js";
-import { appendFeedback, readPendingFeedback, takePendingFeedback } from "../shared/feedback-store.js";
-import { isValidFeedbackBatch } from "../shared/feedback.js";
+import {
+  appendFeedback,
+  markFeedbackDrifted,
+  readPendingFeedback,
+  takePendingFeedback,
+} from "../shared/feedback-store.js";
+import { isValidDriftIdBatch, isValidFeedbackBatch } from "../shared/feedback.js";
 import { appendAgentReply, isValidAgentReplyMessage } from "../shared/agent-reply-store.js";
 import { readSessionHistory } from "../shared/history.js";
 import { renderReviewShell } from "./review-shell.js";
@@ -24,6 +29,7 @@ const FEEDBACK_ROUTE = /^\/session\/([0-9a-f]{16})\/feedback\/?$/;
 const POLL_ROUTE = /^\/session\/([0-9a-f]{16})\/poll\/?$/;
 const AGENT_REPLY_ROUTE = /^\/session\/([0-9a-f]{16})\/agent-reply\/?$/;
 const HISTORY_ROUTE = /^\/session\/([0-9a-f]{16})\/history\/?$/;
+const DRIFT_ROUTE = /^\/session\/([0-9a-f]{16})\/drift\/?$/;
 const RELOAD_ROUTE = /^\/session\/([0-9a-f]{16})\/reload\/?$/;
 const END_ROUTE = /^\/session\/([0-9a-f]{16})\/end\/?$/;
 
@@ -32,6 +38,9 @@ const POLL_CHECK_INTERVAL_MS = 300;
 
 /** Hard cap on an agent-reply POST body, same rationale as MAX_FEEDBACK_BODY_BYTES below. */
 const MAX_AGENT_REPLY_BODY_BYTES = 64 * 1024;
+
+/** Hard cap on a drift-report POST body (issue #10) — just a batch of ids, so this stays small. */
+const MAX_DRIFT_BODY_BYTES = 64 * 1024;
 
 /** Hard cap on a feedback POST body — an unauthenticated local server should never buffer an
  * unbounded request into memory, regardless of what shape validation would later reject it for. */
@@ -259,6 +268,47 @@ async function handleAgentReplyRoute(
 }
 
 /**
+ * The SDK's drift check (issue #10) posts here after recomputing text-range fingerprints against
+ * the live artifact on every load/reload — see sdk/index.ts's checkDrift. Idempotent per id (see
+ * markFeedbackDrifted), so the SDK can freely re-report the same drifted id on a later reload
+ * without needing to track what it already reported.
+ */
+async function handleDriftRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  hash: string,
+): Promise<void> {
+  const record = await readSessionRecordByHash(hash);
+  if (!record) {
+    sendJson(res, 404, { error: "session_not_found" });
+    return;
+  }
+
+  const raw = await readBody(req, MAX_DRIFT_BODY_BYTES);
+  if (raw === undefined) {
+    sendJson(res, 413, { error: "payload_too_large" });
+    return;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    sendJson(res, 400, { error: "invalid_json" });
+    return;
+  }
+
+  const ids = (parsed as Record<string, unknown> | null)?.["ids"];
+  if (!isValidDriftIdBatch(ids)) {
+    sendJson(res, 400, { error: "invalid_drift_batch" });
+    return;
+  }
+
+  const drifted = await markFeedbackDrifted(hash, ids);
+  sendJson(res, 200, { drifted: drifted.length });
+}
+
+/**
  * The review shell's round-history panel (issue #21) fetches this on load and refreshes it
  * alongside the reload long-poll's own tick — see review-shell.ts's fetchHistory. Just a plain
  * GET, not a long-poll: history changes at the same low cadence as a "Send" click or an
@@ -379,6 +429,12 @@ async function handleRequest(
     return;
   }
 
+  const driftMatch = DRIFT_ROUTE.exec(pathname);
+  if (req.method === "POST" && driftMatch) {
+    await handleDriftRoute(req, res, driftMatch[1] as string);
+    return;
+  }
+
   const reloadMatch = RELOAD_ROUTE.exec(pathname);
   if (req.method === "GET" && reloadMatch) {
     const sinceParam = Number.parseInt(url.searchParams.get("since") ?? "0", 10);
@@ -417,9 +473,11 @@ async function handleRequest(
  * GET /session/:hash/poll (long-poll for queued feedback, consumed by `inkloop poll`),
  * POST /session/:hash/agent-reply (record an agent's revision summary ahead of its next poll),
  * GET /session/:hash/history (rounds of sent annotations paired with agent replies, for the
- * review shell's round-history panel), GET /session/:hash/reload (browser-side live-reload
- * long-poll, watches the artifact and its declared sibling assets for changes),
- * POST /session/:hash/end (user-initiated session end, the browser's "End session" button).
+ * review shell's round-history panel), POST /session/:hash/drift (the SDK reports text-range
+ * targets whose live content fingerprint no longer matches what was captured at queue time),
+ * GET /session/:hash/reload (browser-side live-reload long-poll, watches the artifact and its
+ * declared sibling assets for changes), POST /session/:hash/end (user-initiated session end,
+ * the browser's "End session" button).
  */
 export function createInkloopServer(
   config: ServerConfig,

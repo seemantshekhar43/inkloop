@@ -134,6 +134,11 @@ export function renderReviewShell(hash: string): string {
     letter-spacing: 0.05em; margin-right: var(--space-1);
   }
   .history-item-comment { color: var(--ink-text); word-break: break-word; }
+  .history-item.drifted { border-left-color: var(--ink-error); background: rgba(255, 107, 107, 0.1); }
+  .history-item-drift-note {
+    display: block; color: var(--ink-error); font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.05em; margin-top: var(--space-1);
+  }
   .history-reply {
     border-left: 2px solid var(--ink-agent); background: var(--ink-agent-soft);
     border-radius: 0 6px 6px 0; padding: var(--space-1) var(--space-2);
@@ -312,9 +317,16 @@ export function renderReviewShell(hash: string): string {
         var quote = item.target && item.target.quote
           ? '“' + escapeHtml(String(item.target.quote).slice(0, 60)) + '” — '
           : '';
-        return '<div class="history-item">'
+        // Issue #10: the SDK flags an item as drifted when its anchored text no longer matches
+        // the live artifact — surfaced here so a human sees why an agent might ask to re-anchor
+        // instead of resolving it, not just in the raw poll payload the agent itself receives.
+        var driftNote = item.drifted
+          ? '<span class="history-item-drift-note">⚠ Anchor text changed since this was sent</span>'
+          : '';
+        return '<div class="history-item' + (item.drifted ? ' drifted' : '') + '">'
           + '<span class="history-item-target">' + targetLabel(item.target) + '</span>'
-          + '<span class="history-item-comment">' + quote + escapeHtml(item.comment) + '</span></div>';
+          + '<span class="history-item-comment">' + quote + escapeHtml(item.comment) + '</span>'
+          + driftNote + '</div>';
       }).join('');
       var replyHtml = round.reply
         ? '<div class="history-reply"><div class="history-reply-label">Agent revised</div>'

@@ -1,6 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isValidFeedbackBatch, isValidFeedbackItem, MAX_FEEDBACK_BATCH_SIZE } from "./feedback.js";
+import {
+  isValidDriftIdBatch,
+  isValidFeedbackBatch,
+  isValidFeedbackItem,
+  MAX_DRIFT_ID_BATCH_SIZE,
+  MAX_FEEDBACK_BATCH_SIZE,
+  MAX_FINGERPRINT_LENGTH,
+} from "./feedback.js";
 
 function validItem(overrides: Record<string, unknown> = {}): unknown {
   return {
@@ -78,4 +85,33 @@ void test("isValidFeedbackBatch rejects an empty array, a non-array, and a batch
 
 void test("isValidFeedbackBatch rejects a batch containing one invalid item", () => {
   assert.equal(isValidFeedbackBatch([validItem(), { bogus: true }]), false);
+});
+
+void test("accepts a text-range item carrying a fingerprint", () => {
+  const item = validItem({ target: { kind: "text-range", selector: "p", fingerprint: "1a2b3c4d" } });
+  assert.equal(isValidFeedbackItem(item), true);
+});
+
+void test("rejects an oversized or empty fingerprint", () => {
+  assert.equal(
+    isValidFeedbackItem(
+      validItem({ target: { kind: "text-range", fingerprint: "x".repeat(MAX_FINGERPRINT_LENGTH + 1) } }),
+    ),
+    false,
+  );
+  assert.equal(isValidFeedbackItem(validItem({ target: { kind: "text-range", fingerprint: "" } })), false);
+});
+
+void test("isValidDriftIdBatch accepts a non-empty array of id strings", () => {
+  assert.equal(isValidDriftIdBatch(["a", "b", "c"]), true);
+});
+
+void test("isValidDriftIdBatch rejects an empty array, a non-array, a batch over the size cap, and non-string ids", () => {
+  assert.equal(isValidDriftIdBatch([]), false);
+  assert.equal(isValidDriftIdBatch("nope"), false);
+  assert.equal(
+    isValidDriftIdBatch(Array.from({ length: MAX_DRIFT_ID_BATCH_SIZE + 1 }, (_, i) => `id-${i}`)),
+    false,
+  );
+  assert.equal(isValidDriftIdBatch(["a", 42]), false);
 });

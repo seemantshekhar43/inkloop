@@ -575,6 +575,51 @@ void test("history route: groups sent rounds with their agent replies, unknown s
   }
 });
 
+void test("drift route: flags matching ids as drifted, unknown session 404s, invalid body 400s", async () => {
+  const stateRoot = await mkdtemp(path.join(os.tmpdir(), "inkloop-drift-route-test-"));
+  const artifactDir = await mkdtemp(path.join(os.tmpdir(), "inkloop-drift-route-artifact-"));
+  const originalStateDir = process.env["INKLOOP_STATE_DIR"];
+  process.env["INKLOOP_STATE_DIR"] = stateRoot;
+
+  const artifactPath = path.join(artifactDir, "artifact.html");
+  await writeFile(artifactPath, "<p>hi</p>", "utf8");
+
+  const instance = createInkloopServer(baseConfig());
+  const port = await instance.listening;
+  try {
+    await openOrResumeSession(artifactPath);
+    const hash = hashArtifactPath(artifactPath);
+
+    await appendFeedback(hash, [
+      {
+        id: "f1",
+        target: { kind: "text-range", selector: "p", fingerprint: "abc123" },
+        comment: "this passage moved",
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+
+    const { status, body } = await postJson(port, `/session/${hash}/drift`, { ids: ["f1"] });
+    assert.equal(status, 200);
+    assert.equal((body as { drifted: number }).drifted, 1);
+
+    const stored = await readFeedback(hash, stateRoot);
+    assert.equal(stored[0]?.drifted, true);
+
+    const invalid = await postJson(port, `/session/${hash}/drift`, { ids: [] });
+    assert.equal(invalid.status, 400);
+
+    const unknownHash = "0".repeat(16);
+    const missing = await postJson(port, `/session/${unknownHash}/drift`, { ids: ["f1"] });
+    assert.equal(missing.status, 404);
+  } finally {
+    await instance.close();
+    process.env["INKLOOP_STATE_DIR"] = originalStateDir;
+    await rm(stateRoot, { recursive: true, force: true });
+    await rm(artifactDir, { recursive: true, force: true });
+  }
+});
+
 void test("reload route: times out at the current version with no change, and picks up a file write mid-wait", async () => {
   const stateRoot = await mkdtemp(path.join(os.tmpdir(), "inkloop-reload-route-test-"));
   const artifactDir = await mkdtemp(path.join(os.tmpdir(), "inkloop-reload-route-artifact-"));
