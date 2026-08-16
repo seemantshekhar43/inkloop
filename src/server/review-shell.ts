@@ -35,7 +35,13 @@ export function renderReviewShell(hash: string): string {
     --ink-text: #e9e9ee;
     --ink-dim: #8f8fa3;
     --ink-accent: #6f5bff;
+    --ink-accent-soft: rgba(111, 91, 255, 0.12);
     --ink-accent-text: #ffffff;
+    /* Second accent (issue #21): amber, reserved for anything agent-authored (the "Agent
+       revised" entries in the round-history panel) so it never reads as ambiguous with the
+       violet used for human annotations everywhere else. */
+    --ink-agent: #e8a53c;
+    --ink-agent-soft: rgba(232, 165, 60, 0.12);
     --ink-success: #35c98c;
     --ink-error: #ff6b6b;
     --space-1: 4px;
@@ -93,7 +99,50 @@ export function renderReviewShell(hash: string): string {
   footer {
     flex: 0 0 auto; display: flex; flex-direction: column; max-height: 40vh;
     border-top: 1px solid var(--ink-border); background: var(--ink-panel);
+    transition: max-height 0.15s ease;
   }
+  footer.history-expanded { max-height: 75vh; }
+  .history-handle {
+    flex: 0 0 auto; appearance: none; border: 0; width: 100%; text-align: left;
+    display: flex; align-items: center; gap: var(--space-2);
+    background: transparent; color: var(--ink-dim); font: inherit; font-size: 11px;
+    padding: var(--space-2) var(--space-4); cursor: pointer;
+    border-bottom: 1px solid transparent; transition: color 0.12s ease;
+  }
+  .history-handle:hover { color: var(--ink-text); }
+  .history-handle .chevron { display: inline-block; color: var(--ink-accent); transition: transform 0.15s ease; }
+  footer.history-expanded .history-handle { border-bottom-color: var(--ink-border); }
+  footer.history-expanded .history-handle .chevron { transform: rotate(180deg); }
+  .history-panel {
+    flex: 0 1 auto; display: none; flex-direction: column; gap: var(--space-3);
+    overflow-y: auto; min-height: 0; padding: var(--space-3) var(--space-4);
+    border-bottom: 1px solid var(--ink-border);
+  }
+  footer.history-expanded .history-panel { display: flex; }
+  .history-empty { color: var(--ink-dim); font-size: 12px; }
+  .history-round { display: flex; flex-direction: column; gap: var(--space-2); }
+  .history-round-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-dim);
+  }
+  .history-items { display: flex; flex-direction: column; gap: var(--space-1); }
+  .history-item {
+    border-left: 2px solid var(--ink-accent); background: var(--ink-accent-soft);
+    border-radius: 0 6px 6px 0; padding: var(--space-1) var(--space-2); font-size: 12px; line-height: 1.4;
+  }
+  .history-item-target {
+    color: var(--ink-accent); font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.05em; margin-right: var(--space-1);
+  }
+  .history-item-comment { color: var(--ink-text); word-break: break-word; }
+  .history-reply {
+    border-left: 2px solid var(--ink-agent); background: var(--ink-agent-soft);
+    border-radius: 0 6px 6px 0; padding: var(--space-1) var(--space-2);
+  }
+  .history-reply-label {
+    color: var(--ink-agent); font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.05em; margin-bottom: var(--space-1);
+  }
+  .history-reply-message { color: var(--ink-text); font-size: 12px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
   .thread { display: flex; gap: var(--space-2); overflow-x: auto; padding: var(--space-3) var(--space-4); }
   .thread-empty { color: var(--ink-dim); font-size: 12px; padding: var(--space-1) 0; }
   .thread-empty::before { content: "› "; color: var(--ink-accent); }
@@ -137,6 +186,7 @@ export function renderReviewShell(hash: string): string {
 
   @media (max-width: 480px) {
     footer { max-height: 55vh; }
+    footer.history-expanded { max-height: 85vh; }
     .pill { max-width: 200px; }
     .composer-row { flex-direction: column; }
     .composer-row button { align-self: flex-end; }
@@ -155,7 +205,11 @@ export function renderReviewShell(hash: string): string {
 <main>
   <iframe id="artifact-frame" src="/session/${hash}/artifact" title="artifact preview"></iframe>
 </main>
-<footer>
+<footer id="dock">
+  <button type="button" class="history-handle" id="history-handle">
+    <span class="chevron">▲</span><span id="history-label">History · 0 rounds, 0 comments</span>
+  </button>
+  <div class="history-panel" id="history-panel"></div>
   <div class="thread" id="thread">
     <div class="thread-empty">No annotations queued yet — select an element, select text, or write a note below.</div>
   </div>
@@ -176,11 +230,16 @@ export function renderReviewShell(hash: string): string {
   var composer = document.getElementById('composer');
   var sendBtn = document.getElementById('send-btn');
   var statusEl = document.getElementById('status');
+  var dock = document.getElementById('dock');
+  var historyHandle = document.getElementById('history-handle');
+  var historyPanel = document.getElementById('history-panel');
+  var historyLabel = document.getElementById('history-label');
   var picking = false;
   var items = [];
   var lastScrollY = 0;
   var ended = false;
   var reloadPollingActive = true;
+  var historyExpanded = false;
   var SESSION_HASH = ${JSON.stringify(hash)};
 
   function escapeHtml(value) {
@@ -220,6 +279,61 @@ export function renderReviewShell(hash: string): string {
     // Only touch the disabled state here — the "sending" in-flight state is driven separately
     // by the send button's own click handler and the sent/error responses below.
     if (!sendBtn.classList.contains('sending')) sendBtn.disabled = items.length === 0;
+  }
+
+  // ---- Round-history panel (issue #21) -----------------------------------------------------
+  // The vertically-scrolling history panel above the compose dock: past rounds of sent
+  // annotations paired with the agent's "Agent revised" reply for that round, if any. The dock
+  // stays collapsed by default (unchanged from before this issue); expanding it just grows the
+  // footer and reveals this panel above the still-horizontal draft thread/composer.
+
+  function setHistoryExpanded(value) {
+    historyExpanded = value;
+    dock.classList.toggle('history-expanded', historyExpanded);
+  }
+
+  historyHandle.addEventListener('click', function () {
+    setHistoryExpanded(!historyExpanded);
+  });
+
+  function renderHistory(history) {
+    var rounds = (history && history.rounds) || [];
+    var commentCount = (history && history.commentCount) || 0;
+    historyLabel.textContent = rounds.length + (rounds.length === 1 ? ' round' : ' rounds')
+      + ' · ' + commentCount + (commentCount === 1 ? ' comment' : ' comments');
+
+    if (rounds.length === 0) {
+      historyPanel.innerHTML = '<div class="history-empty">No rounds sent yet.</div>';
+      return;
+    }
+
+    historyPanel.innerHTML = rounds.map(function (round) {
+      var itemsHtml = round.items.map(function (item) {
+        var quote = item.target && item.target.quote
+          ? '“' + escapeHtml(String(item.target.quote).slice(0, 60)) + '” — '
+          : '';
+        return '<div class="history-item">'
+          + '<span class="history-item-target">' + targetLabel(item.target) + '</span>'
+          + '<span class="history-item-comment">' + quote + escapeHtml(item.comment) + '</span></div>';
+      }).join('');
+      var replyHtml = round.reply
+        ? '<div class="history-reply"><div class="history-reply-label">Agent revised</div>'
+          + '<div class="history-reply-message">' + escapeHtml(round.reply.message) + '</div></div>'
+        : '';
+      return '<div class="history-round">'
+        + '<div class="history-round-label">Round ' + round.round + '</div>'
+        + '<div class="history-items">' + itemsHtml + '</div>' + replyHtml + '</div>';
+    }).join('');
+  }
+
+  function fetchHistory() {
+    fetch('/session/' + SESSION_HASH + '/history')
+      .then(function (res) { return res.json(); })
+      .then(renderHistory)
+      .catch(function () {
+        // Best-effort — a failed refresh just leaves the panel showing its last-known state
+        // until the next tick (piggybacked on pollReload below) succeeds.
+      });
   }
 
   function postToFrame(message) {
@@ -323,6 +437,7 @@ export function renderReviewShell(hash: string): string {
     } else if (data.type === 'inkloop:sent') {
       resetSendButton();
       setStatus('Sent.', 'success');
+      fetchHistory();
     } else if (data.type === 'inkloop:send-error') {
       resetSendButton();
       setStatus('Failed to send: ' + data.message, 'error');
@@ -353,6 +468,10 @@ export function renderReviewShell(hash: string): string {
         if (version > sinceVersion) {
           iframe.src = '/session/' + SESSION_HASH + '/artifact?v=' + version;
         }
+        // Piggybacks the history refresh on this same long-poll cadence (issue #21) so an
+        // agent's --agent-reply flag, which has no other signal reaching this shell, still shows
+        // up within one reload tick, without standing up a second long-poll loop just for it.
+        fetchHistory();
         pollReload(version);
       })
       .catch(function () {
@@ -364,6 +483,7 @@ export function renderReviewShell(hash: string): string {
   pollReload(0);
 
   render();
+  fetchHistory();
 })();
 </script>
 </body>

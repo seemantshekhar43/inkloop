@@ -8,7 +8,7 @@ import path from "node:path";
 import { createInkloopServer } from "./create-server.js";
 import type { ServerConfig } from "./config.js";
 import { hashArtifactPath, openOrResumeSession, readSessionRecord } from "../shared/session-store.js";
-import { appendFeedback, readFeedback } from "../shared/feedback-store.js";
+import { appendFeedback, readFeedback, takePendingFeedback } from "../shared/feedback-store.js";
 import { readAgentReplies } from "../shared/agent-reply-store.js";
 
 function baseConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
@@ -495,6 +495,77 @@ void test("agent-reply route: valid message is accepted and persisted, unknown s
 
     const unknownHash = "0".repeat(16);
     const missing = await postJson(port, `/session/${unknownHash}/agent-reply`, { message: "hi" });
+    assert.equal(missing.status, 404);
+  } finally {
+    await instance.close();
+    process.env["INKLOOP_STATE_DIR"] = originalStateDir;
+    await rm(stateRoot, { recursive: true, force: true });
+    await rm(artifactDir, { recursive: true, force: true });
+  }
+});
+
+void test("history route: groups sent rounds with their agent replies, unknown session 404s", async () => {
+  const stateRoot = await mkdtemp(path.join(os.tmpdir(), "inkloop-history-route-test-"));
+  const artifactDir = await mkdtemp(path.join(os.tmpdir(), "inkloop-history-route-artifact-"));
+  const originalStateDir = process.env["INKLOOP_STATE_DIR"];
+  process.env["INKLOOP_STATE_DIR"] = stateRoot;
+
+  const artifactPath = path.join(artifactDir, "artifact.html");
+  await writeFile(artifactPath, "<p>hi</p>", "utf8");
+
+  const instance = createInkloopServer(baseConfig());
+  const port = await instance.listening;
+  try {
+    await openOrResumeSession(artifactPath);
+    const hash = hashArtifactPath(artifactPath);
+
+    // Empty history before anything is sent.
+    const empty = await request(port, `/session/${hash}/history`);
+    assert.equal(empty.status, 200);
+    assert.deepEqual(empty.body, { rounds: [], commentCount: 0 });
+
+    // Round 1: one annotation sent, then the agent replies to it.
+    await appendFeedback(hash, [
+      {
+        id: "a1",
+        target: { kind: "general" },
+        comment: "fix the header",
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+    // The agent reply's round is pinned to the highest *delivered* round (see
+    // agent-reply-store.ts's appendAgentReply) — an agent has to have polled round 1 first,
+    // same as it would via `inkloop poll`, for the reply to attach to that round.
+    await takePendingFeedback(hash, stateRoot);
+    await postJson(port, `/session/${hash}/agent-reply`, { message: "fixed the header" });
+
+    // Round 2: a second annotation, no reply yet.
+    await appendFeedback(hash, [
+      {
+        id: "a2",
+        target: { kind: "general" },
+        comment: "tighten spacing",
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+
+    const { status, body } = await request(port, `/session/${hash}/history`);
+    assert.equal(status, 200);
+    const history = body as {
+      rounds: { round: number; items: { id: string }[]; reply?: { message: string } }[];
+      commentCount: number;
+    };
+    assert.equal(history.commentCount, 2);
+    assert.equal(history.rounds.length, 2);
+    assert.equal(history.rounds[0]?.round, 1);
+    assert.equal(history.rounds[0]?.items[0]?.id, "a1");
+    assert.equal(history.rounds[0]?.reply?.message, "fixed the header");
+    assert.equal(history.rounds[1]?.round, 2);
+    assert.equal(history.rounds[1]?.items[0]?.id, "a2");
+    assert.equal(history.rounds[1]?.reply, undefined);
+
+    const unknownHash = "0".repeat(16);
+    const missing = await request(port, `/session/${unknownHash}/history`);
     assert.equal(missing.status, 404);
   } finally {
     await instance.close();

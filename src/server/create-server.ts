@@ -6,6 +6,7 @@ import { endSession, nextStepGuidance, readSessionRecordByHash } from "../shared
 import { appendFeedback, readPendingFeedback, takePendingFeedback } from "../shared/feedback-store.js";
 import { isValidFeedbackBatch } from "../shared/feedback.js";
 import { appendAgentReply, isValidAgentReplyMessage } from "../shared/agent-reply-store.js";
+import { readSessionHistory } from "../shared/history.js";
 import { renderReviewShell } from "./review-shell.js";
 import { injectSdkScript, readSdkSource, SdkNotBuiltError } from "./inject-sdk.js";
 import { ArtifactWatcher, createArtifactWatcher, waitForChange } from "./watch-artifact.js";
@@ -22,6 +23,7 @@ const SESSION_ROUTE = /^\/session\/([0-9a-f]{16})(\/artifact)?\/?$/;
 const FEEDBACK_ROUTE = /^\/session\/([0-9a-f]{16})\/feedback\/?$/;
 const POLL_ROUTE = /^\/session\/([0-9a-f]{16})\/poll\/?$/;
 const AGENT_REPLY_ROUTE = /^\/session\/([0-9a-f]{16})\/agent-reply\/?$/;
+const HISTORY_ROUTE = /^\/session\/([0-9a-f]{16})\/history\/?$/;
 const RELOAD_ROUTE = /^\/session\/([0-9a-f]{16})\/reload\/?$/;
 const END_ROUTE = /^\/session\/([0-9a-f]{16})\/end\/?$/;
 
@@ -257,6 +259,24 @@ async function handleAgentReplyRoute(
 }
 
 /**
+ * The review shell's round-history panel (issue #21) fetches this on load and refreshes it
+ * alongside the reload long-poll's own tick — see review-shell.ts's fetchHistory. Just a plain
+ * GET, not a long-poll: history changes at the same low cadence as a "Send" click or an
+ * `--agent-reply`, so there's no need for the bounded-wait machinery handlePollRoute and
+ * handleReloadRoute use.
+ */
+async function handleHistoryRoute(res: http.ServerResponse, hash: string): Promise<void> {
+  const record = await readSessionRecordByHash(hash);
+  if (!record) {
+    sendJson(res, 404, { error: "session_not_found" });
+    return;
+  }
+
+  const history = await readSessionHistory(hash);
+  sendJson(res, 200, history);
+}
+
+/**
  * Live reload's long-poll route (issue #8): mirrors handlePollRoute's shape (bounded wait,
  * returns promptly on a real event or an empty-ish result on timeout) but waits on an in-process
  * ArtifactWatcher rather than re-reading a file. `since` is the browser's last-known version;
@@ -353,6 +373,12 @@ async function handleRequest(
     return;
   }
 
+  const historyMatch = HISTORY_ROUTE.exec(pathname);
+  if (req.method === "GET" && historyMatch) {
+    await handleHistoryRoute(res, historyMatch[1] as string);
+    return;
+  }
+
   const reloadMatch = RELOAD_ROUTE.exec(pathname);
   if (req.method === "GET" && reloadMatch) {
     const sinceParam = Number.parseInt(url.searchParams.get("since") ?? "0", 10);
@@ -390,9 +416,10 @@ async function handleRequest(
  * serve time), POST /session/:hash/feedback (queue a batch of drafted annotations),
  * GET /session/:hash/poll (long-poll for queued feedback, consumed by `inkloop poll`),
  * POST /session/:hash/agent-reply (record an agent's revision summary ahead of its next poll),
- * GET /session/:hash/reload (browser-side live-reload long-poll, watches the artifact and its
- * declared sibling assets for changes), POST /session/:hash/end (user-initiated session end,
- * the browser's "End session" button).
+ * GET /session/:hash/history (rounds of sent annotations paired with agent replies, for the
+ * review shell's round-history panel), GET /session/:hash/reload (browser-side live-reload
+ * long-poll, watches the artifact and its declared sibling assets for changes),
+ * POST /session/:hash/end (user-initiated session end, the browser's "End session" button).
  */
 export function createInkloopServer(
   config: ServerConfig,
