@@ -55,7 +55,8 @@ Agent                    Local server (loopback)          Browser UI
 |---|---|---|
 | **Core loop** | v1 — in | Open → annotate element/text range → queue → long-poll → agent revises → live reload with state preservation. This is the entire non-negotiable spec. Effort: moderate. Table-stakes, but a smaller install footprint than lavish-axi is itself a real pitch. |
 | **Layout/QA issue inbox** | v2 — noted down, not dropped | Passive render-audit + stateful issue lifecycle (open/queued/resolved/returned) is genuinely hard to get right without false positives, and lavish-axi already does it well. Effort: high (viewport matrix, fingerprinting, false-negative guards). Revisit once the core loop is proven and there's a concrete complaint it would fix. |
-| **Mermaid diagram editing** | v2 — noted down, not dropped | Embedding Excalidraw, scene autosave, staleness detection on source change — a large surface for a feature most sessions won't touch. Effort: high (third-party whiteboard integration). Niche relative to the core review loop. |
+| **Mermaid diagram *editing*** | v2 — noted down, not dropped | Embedding Excalidraw, scene autosave, staleness detection on source change — a large surface for a feature most sessions won't touch. Effort: high (third-party whiteboard integration). Niche relative to the core review loop. |
+| **Mermaid diagram *rendering*** | Not an inkloop feature | Not something inkloop needs to build at all — an artifact can already self-render Mermaid diagrams (a `.mermaid` block + a CDN-imported Mermaid script, see `docs/examples/mermaid-artifact.html`), since the artifact iframe has no sandbox/CSP restriction and `injectSdkScript` never touches the artifact's own scripts. See AGENTS.md and issue #33. |
 
 Adopt regardless of scope: **drift detection**, from sidenote-cli — refuse (or flag) resolving a comment
 anchored to a text range whose source has since changed, rather than silently editing the wrong thing.

@@ -30,7 +30,25 @@ starting on any issue — most design questions are already answered there.
   layout, typography, and interaction direction. Applies to issues #5 and #6.
 - **Portability of the core loop over new features.** If a change would complicate the open → annotate →
   queue → poll → revise → reload loop to make room for something else, it belongs in a v2 issue, not v1.
-  Layout/QA detection and Mermaid editing are explicitly deferred — see `docs/plan.md` §3.
+  Layout/QA detection and *editable* Mermaid whiteboards are explicitly deferred — see `docs/plan.md` §3.
+
+## Rendering diagrams in an artifact (no inkloop support needed)
+
+An artifact can already render a Mermaid diagram with zero help from inkloop — the artifact iframe has no
+`sandbox` attribute and the server sets no CSP header (`src/server/review-shell.ts`,
+`src/server/inject-sdk.ts`), and `injectSdkScript` only ever adds one `<script src="/sdk.js">` tag before
+`</body>` without touching anything else in the file. So an artifact is free to bring its own self-contained
+diagram-rendering script the same way it can bring any other inline CSS/JS: a `<div class="mermaid">...
+</div>` block plus a `<script type="module">` that imports Mermaid's own pre-built ESM bundle from a CDN
+(`https://cdn.jsdelivr.net/npm/mermaid@<version>/dist/mermaid.esm.min.mjs`) and calls `mermaid.run()` — see
+`docs/examples/mermaid-artifact.html` for a verified working example (renders identically via
+`inkloop <path>` and by opening the raw `.html` file directly). Because the script lives in the artifact HTML itself rather
+than being injected by inkloop, this also satisfies the "standalone artifact still renders identically"
+non-negotiable for free. Don't add Mermaid (or any other renderer) as an inkloop dependency for this — it's
+the artifact author's concern, not inkloop's. Mermaid itself is MIT-licensed (free, no
+attribution/fee obligations beyond the license notice bundled in the library), and since it's
+loaded from the artifact's own script rather than from inkloop's `package.json`, it never
+becomes an inkloop dependency or license obligation either way. See issue #33.
 
 ## Dev workflow
 
