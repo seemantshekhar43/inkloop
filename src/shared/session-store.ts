@@ -182,9 +182,10 @@ export async function endSession(
   const existing = await readSessionRecord(absolutePath, stateRoot);
   if (!existing) throw new SessionNotFoundError(absolutePath);
 
+  const status = existing.status === "user-ended" ? "user-ended" : endedBy === "agent" ? "agent-ended" : "user-ended";
   const record: SessionRecord = {
     ...existing,
-    status: endedBy === "agent" ? "agent-ended" : "user-ended",
+    status,
     updatedAt: new Date().toISOString(),
   };
   await writeSessionRecordAtomic(record, stateRoot);
