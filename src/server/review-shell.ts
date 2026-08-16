@@ -255,11 +255,11 @@ export function renderReviewShell(hash: string): string {
   <span class="wordmark">inkloop</span>
   <span class="session-path">session ${hash}</span>
   <button type="button" class="pick" id="pick-btn" aria-pressed="false">
-    <span class="pick-dot" aria-hidden="true"></span><span id="pick-label">Select element</span>
+    <span class="pick-dot" aria-hidden="true"></span><span id="pick-label">Sidenote</span>
   </button>
   <button type="button" class="end-session" id="end-btn">End session</button>
 </header>
-<div class="picking-hint" id="picking-hint">Click an element in the artifact to annotate it — click “Select element” again to cancel.</div>
+<div class="picking-hint" id="picking-hint">Click an element in the artifact to annotate it — click “Cancel Sidenote” again to cancel.</div>
 <div class="ended-banner" id="ended-banner">Session ended. Run <code>inkloop</code> on this file again with <code>--reopen</code> to resume review.</div>
 <div class="tab-banner" id="tab-banner">This session may be open in another tab — annotations from both could interleave.</div>
 <div class="content">
@@ -450,7 +450,7 @@ export function renderReviewShell(hash: string): string {
     picking = value;
     pickBtn.classList.toggle('active', picking);
     pickBtn.setAttribute('aria-pressed', String(picking));
-    pickLabel.textContent = picking ? 'Cancel picking' : 'Select element';
+    pickLabel.textContent = picking ? 'Cancel Sidenote' : 'Sidenote';
     pickingHint.classList.toggle('visible', picking);
   }
 
