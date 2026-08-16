@@ -58,10 +58,11 @@ src/
 2. **Branch per issue**: `git checkout -b issue-<n>-<short-slug>` off `main`.
 3. Implement, with tests. `node:test` files live next to the code they cover as `*.test.ts`.
 4. **Run `npm run check` locally before considering the issue done.**
-5. **Gate with the `no-mistakes` skill before merging** — it runs review, tests, lint, docs, and drives the
-   push/PR/CI flow. Do not hand-merge around it. This is a hard requirement for this repo, not an optional
-   extra pass: security bugs in an unauthenticated local HTTP server are exactly the class of mistake it's
-   designed to catch.
+5. **Gate with the `no-mistakes` skill before pushing or opening a PR, and before merging** — it runs review,
+   tests, lint, docs, and is meant to drive the push/PR/CI flow itself, not just be run against a branch
+   already pushed by hand. Do not push, open a PR, or hand-merge around it. This is a hard requirement for
+   this repo, not an optional extra pass: security bugs in an unauthenticated local HTTP server are exactly
+   the class of mistake it's designed to catch.
 6. Once the PR is green and merged, **close the issue** (`gh-axi issue close <n>` if not auto-closed by a
    `Closes #<n>` line in the PR body — prefer the `Closes #<n>` line so it's automatic).
 7. Update `docs/plan.md` in the same PR if the work changes a decision recorded there. Never leave a stale
