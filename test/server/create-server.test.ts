@@ -5,11 +5,11 @@ import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
-import { createInkloopServer } from "./create-server.js";
-import type { ServerConfig } from "./config.js";
-import { hashArtifactPath, openOrResumeSession, readSessionRecord } from "../shared/session-store.js";
-import { appendFeedback, readFeedback, takePendingFeedback } from "../shared/feedback-store.js";
-import { readAgentReplies } from "../shared/agent-reply-store.js";
+import { createInkloopServer } from "../../src/server/create-server.js";
+import type { ServerConfig } from "../../src/server/config.js";
+import { hashArtifactPath, openOrResumeSession, readSessionRecord } from "../../src/shared/session-store.js";
+import { appendFeedback, readFeedback, takePendingFeedback } from "../../src/shared/feedback-store.js";
+import { readAgentReplies } from "../../src/shared/agent-reply-store.js";
 
 function baseConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
   return {

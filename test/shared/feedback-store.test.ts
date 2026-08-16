@@ -9,8 +9,8 @@ import {
   readFeedback,
   readPendingFeedback,
   takePendingFeedback,
-} from "./feedback-store.js";
-import type { FeedbackItem } from "./feedback.js";
+} from "../../src/shared/feedback-store.js";
+import type { FeedbackItem } from "../../src/shared/feedback.js";
 
 async function tempStateRoot(): Promise<string> {
   return mkdtemp(path.join(os.tmpdir(), "inkloop-feedback-store-test-"));

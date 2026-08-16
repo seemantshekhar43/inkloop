@@ -8,8 +8,8 @@ import {
   isValidAgentReplyMessage,
   MAX_AGENT_REPLY_LENGTH,
   readAgentReplies,
-} from "./agent-reply-store.js";
-import { appendFeedback, takePendingFeedback } from "./feedback-store.js";
+} from "../../src/shared/agent-reply-store.js";
+import { appendFeedback, takePendingFeedback } from "../../src/shared/feedback-store.js";
 
 async function tempStateRoot(): Promise<string> {
   return mkdtemp(path.join(os.tmpdir(), "inkloop-agent-reply-store-test-"));

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { resolveArtifactPath } from "./paths.js";
+import { resolveArtifactPath } from "../../src/shared/paths.js";
 
 void test("resolves a relative path against the given cwd", () => {
   const result = resolveArtifactPath("artifact.html", "/home/user/project");

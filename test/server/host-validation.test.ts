@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isHostAllowed } from "./host-validation.js";
+import { isHostAllowed } from "../../src/server/host-validation.js";
 
 const baseConfig = { host: "127.0.0.1", allowedHosts: [] as string[] };
 
