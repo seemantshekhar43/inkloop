@@ -71,10 +71,21 @@ export function renderReviewShell(hash: string): string {
   button.pick {
     appearance: none; border: 1px solid var(--ink-border); background: transparent;
     color: var(--ink-text); padding: var(--space-2) var(--space-3); border-radius: 6px;
-    font: inherit; cursor: pointer; transition: background-color 0.12s ease, border-color 0.12s ease;
+    font: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: var(--space-2);
+    transition: background-color 0.12s ease, border-color 0.12s ease;
   }
   button.pick:hover { border-color: var(--ink-accent); }
   button.pick.active { background: var(--ink-accent); border-color: var(--ink-accent); color: var(--ink-accent-text); }
+  /* Issue #27: a bare border/background change read as too subtle to register as an on/off
+     toggle at a glance — a dot indicator (hollow when off, solid-filled when on, matching the
+     familiar "recording" convention) plus a label that swaps to an explicit call-to-cancel make
+     the state unambiguous either way. */
+  .pick-dot {
+    width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto;
+    border: 1.5px solid var(--ink-dim); background: transparent;
+    transition: background-color 0.12s ease, border-color 0.12s ease;
+  }
+  button.pick.active .pick-dot { background: var(--ink-accent-text); border-color: var(--ink-accent-text); }
   button.end-session {
     appearance: none; border: 1px solid var(--ink-border); background: transparent;
     color: var(--ink-error); padding: var(--space-2) var(--space-3); border-radius: 6px;
@@ -202,7 +213,9 @@ export function renderReviewShell(hash: string): string {
 <header>
   <span class="wordmark">inkloop</span>
   <span class="session-path">session ${hash}</span>
-  <button type="button" class="pick" id="pick-btn">Select element</button>
+  <button type="button" class="pick" id="pick-btn" aria-pressed="false">
+    <span class="pick-dot" aria-hidden="true"></span><span id="pick-label">Select element</span>
+  </button>
   <button type="button" class="end-session" id="end-btn">End session</button>
 </header>
 <div class="picking-hint" id="picking-hint">Click an element in the artifact to annotate it — click “Select element” again to cancel.</div>
@@ -228,6 +241,7 @@ export function renderReviewShell(hash: string): string {
 (function () {
   var iframe = document.getElementById('artifact-frame');
   var pickBtn = document.getElementById('pick-btn');
+  var pickLabel = document.getElementById('pick-label');
   var endBtn = document.getElementById('end-btn');
   var endedBanner = document.getElementById('ended-banner');
   var pickingHint = document.getElementById('picking-hint');
@@ -253,11 +267,15 @@ export function renderReviewShell(hash: string): string {
     });
   }
 
+  // Issue #27: element and text-range anchors need to read as visually distinct at a glance,
+  // not just by label text — a dotted-box glyph for a picked element vs. a quote glyph for a
+  // picked text range, both prefixed onto the same uppercase label everywhere targetLabel is used
+  // (draft pills and round-history entries alike).
   function targetLabel(target) {
-    if (!target) return 'note';
-    if (target.kind === 'element') return 'element';
-    if (target.kind === 'text-range') return 'selection';
-    return 'note';
+    if (!target) return '✎ note';
+    if (target.kind === 'element') return '□ element';
+    if (target.kind === 'text-range') return '❝ selection';
+    return '✎ note';
   }
 
   function setStatus(text, kind) {
@@ -356,6 +374,8 @@ export function renderReviewShell(hash: string): string {
   function setPicking(value) {
     picking = value;
     pickBtn.classList.toggle('active', picking);
+    pickBtn.setAttribute('aria-pressed', String(picking));
+    pickLabel.textContent = picking ? 'Cancel picking' : 'Select element';
     pickingHint.classList.toggle('visible', picking);
   }
 
