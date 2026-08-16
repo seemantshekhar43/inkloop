@@ -114,3 +114,31 @@ export async function takePendingFeedback(
   await writeFeedbackAtomic(hash, updated, stateRoot);
   return claimed;
 }
+
+/**
+ * Flags the given feedback item ids as drifted (issue #10): the browser's SDK recomputed a
+ * text-range target's content fingerprint against the live artifact and found it no longer
+ * matches what was captured at queue time. Idempotent — an id that's already drifted, or that
+ * doesn't match any item, is left untouched, so a client can safely re-report the same id across
+ * multiple artifact reloads. Persists even for already-delivered items: an agent that's about to
+ * revise based on a poll response it already received can't un-see it, but a human re-opening
+ * the review shell should still see the flag in the round-history panel (issue #21).
+ */
+export async function markFeedbackDrifted(
+  hash: string,
+  ids: string[],
+  stateRoot: string = defaultStateRoot(),
+): Promise<FeedbackItem[]> {
+  const idSet = new Set(ids);
+  const all = await readFeedback(hash, stateRoot);
+  const driftedAt = new Date().toISOString();
+  let changed = false;
+  const updated = all.map((item) => {
+    if (!idSet.has(item.id) || item.drifted) return item;
+    changed = true;
+    return { ...item, drifted: true, driftedAt };
+  });
+  if (!changed) return [];
+  await writeFeedbackAtomic(hash, updated, stateRoot);
+  return updated.filter((item) => idSet.has(item.id));
+}

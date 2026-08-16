@@ -23,6 +23,7 @@
     startOffset?: number;
     endOffset?: number;
     quote?: string;
+    fingerprint?: string;
   }
 
   interface FeedbackItem {
@@ -30,6 +31,8 @@
     target: FeedbackTarget;
     comment: string;
     createdAt: string;
+    deliveredAt?: string;
+    drifted?: boolean;
   }
 
   // Only makes sense hosted inside the review shell's iframe; guard against accidental direct
@@ -101,6 +104,22 @@
       node = parent;
     }
     return parts.join(" > ");
+  }
+
+  /**
+   * A short, deterministic content fingerprint (issue #10): FNV-1a over a string, chosen over
+   * Web Crypto's subtle.digest because that's async and this needs to run synchronously inline
+   * with selection handling. Not a security hash — collisions are an acceptable, low-stakes risk
+   * here (worst case: a genuinely-drifted annotation stays unflagged until a future recheck),
+   * not something worth a stronger algorithm for.
+   */
+  function fingerprint(text: string): string {
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < text.length; i++) {
+      hash ^= text.charCodeAt(i);
+      hash = Math.imul(hash, 0x01000193);
+    }
+    return (hash >>> 0).toString(16);
   }
 
   // ---- Shadow-DOM UI chrome -------------------------------------------------------------
@@ -255,6 +274,10 @@
       kind: "text-range",
       selector: buildSelector(container),
       quote: text.slice(0, 10_000),
+      // Captured against the container's full live text, not just the quote — drift should also
+      // catch edits elsewhere inside the same anchor that shift where the quote sits, not only
+      // edits to the quoted substring itself. See checkDrift below for the other half of this.
+      fingerprint: fingerprint(anchorText),
       ...(startOffset >= 0
         ? { startOffset, endOffset: startOffset + text.length }
         : {}),
@@ -355,6 +378,58 @@
       });
     }
   }
+
+  // ---- Drift detection (issue #10) --------------------------------------------------------
+
+  /**
+   * Recomputes the live fingerprint of every not-yet-delivered text-range annotation against the
+   * *current* DOM and reports any mismatch to the server, so `inkloop poll` can hand the agent a
+   * `drifted: true` flag instead of letting it resolve a comment against a passage that moved.
+   * Runs once per artifact load, including every live-reload (issue #8) — since a full iframe
+   * reload re-runs this whole IIFE from scratch, that's the natural check-in point: it's exactly
+   * when the artifact the agent just revised becomes the live DOM this function reads.
+   *
+   * Best-effort, not a hard guarantee: an `inkloop poll` that's already in flight when this
+   * artifact reloads can return an item before this check has a chance to flag it. Acceptable
+   * for a local single-user tool — the alternative (blocking poll on a live browser round-trip)
+   * would couple the agent-facing loop to a browser tab being open, which the rest of this
+   * codebase deliberately avoids.
+   */
+  async function checkDrift(): Promise<void> {
+    let history: { rounds?: { items?: FeedbackItem[] }[] };
+    try {
+      const response = await fetch(`/session/${sessionHash}/history`);
+      if (!response.ok) return;
+      history = (await response.json()) as typeof history;
+    } catch {
+      return;
+    }
+
+    const drifted: string[] = [];
+    for (const round of history.rounds ?? []) {
+      for (const item of round.items ?? []) {
+        if (item.deliveredAt !== undefined || item.drifted) continue;
+        const target = item.target;
+        if (target.kind !== "text-range" || !target.selector || !target.fingerprint) continue;
+
+        const container = document.querySelector(target.selector);
+        const live = container ? fingerprint(container.textContent ?? "") : undefined;
+        if (live !== target.fingerprint) drifted.push(item.id);
+      }
+    }
+    if (drifted.length === 0) return;
+
+    try {
+      await fetch(`/session/${sessionHash}/drift`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: drifted }),
+      });
+    } catch {
+      // Best-effort, same as above — a failed report just leaves it to the next reload's check.
+    }
+  }
+  void checkDrift();
 
   postToParent({ type: "inkloop:ready" });
 })();

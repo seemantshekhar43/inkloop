@@ -3,7 +3,13 @@ import assert from "node:assert/strict";
 import { mkdtemp } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { appendFeedback, readFeedback, readPendingFeedback, takePendingFeedback } from "./feedback-store.js";
+import {
+  appendFeedback,
+  markFeedbackDrifted,
+  readFeedback,
+  readPendingFeedback,
+  takePendingFeedback,
+} from "./feedback-store.js";
 import type { FeedbackItem } from "./feedback.js";
 
 async function tempStateRoot(): Promise<string> {
@@ -116,4 +122,45 @@ void test("readPendingFeedback and takePendingFeedback only ever see items queue
     claimed.map((i) => i.id),
     ["2"],
   );
+});
+
+void test("markFeedbackDrifted flags matching ids, is idempotent, and ignores unknown ids", async () => {
+  const stateRoot = await tempStateRoot();
+  const hash = "1".repeat(16);
+  await appendFeedback(hash, [item("1"), item("2"), item("3")], stateRoot);
+
+  const drifted = await markFeedbackDrifted(hash, ["1", "3", "unknown-id"], stateRoot);
+  assert.deepEqual(
+    drifted.map((i) => i.id),
+    ["1", "3"],
+  );
+  assert.ok(drifted.every((i) => i.drifted === true && typeof i.driftedAt === "string"));
+
+  const all = await readFeedback(hash, stateRoot);
+  assert.deepEqual(
+    all.map((i) => ({ id: i.id, drifted: i.drifted ?? false })),
+    [
+      { id: "1", drifted: true },
+      { id: "2", drifted: false },
+      { id: "3", drifted: true },
+    ],
+  );
+
+  // Re-reporting an already-drifted id is a no-op: driftedAt doesn't move forward, and
+  // re-reporting only unknown/already-drifted ids returns nothing newly changed.
+  const firstDriftedAt = all[0]?.driftedAt;
+  const second = await markFeedbackDrifted(hash, ["1"], stateRoot);
+  assert.deepEqual(second, []);
+  assert.equal((await readFeedback(hash, stateRoot))[0]?.driftedAt, firstDriftedAt);
+});
+
+void test("markFeedbackDrifted keeps sessions with different hashes isolated", async () => {
+  const stateRoot = await tempStateRoot();
+  await appendFeedback("2".repeat(16), [item("x")], stateRoot);
+  await appendFeedback("3".repeat(16), [item("y")], stateRoot);
+
+  await markFeedbackDrifted("2".repeat(16), ["x"], stateRoot);
+
+  assert.equal((await readFeedback("2".repeat(16), stateRoot))[0]?.drifted, true);
+  assert.equal((await readFeedback("3".repeat(16), stateRoot))[0]?.drifted, undefined);
 });
