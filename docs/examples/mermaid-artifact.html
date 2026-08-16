@@ -1,0 +1,29 @@
+<!doctype html>
+<!--
+  Reference example: a Mermaid diagram rendered inside a self-contained artifact, with no help
+  from inkloop. See AGENTS.md ("Rendering diagrams in an artifact") and issue #33 — inkloop
+  never needs a Mermaid dependency of its own, because injectSdkScript only ever adds one
+  <script src="/sdk.js"> tag before </body> and never touches the rest of the artifact.
+
+  Verified: opening this file via `inkloop <path>` renders the flowchart inside the review
+  shell's iframe exactly as it does when opening the raw .html file directly, no inkloop server
+  running. Mermaid is MIT-licensed — free to use, no attribution/fee obligations beyond the
+  license notice bundled in the library.
+-->
+<html>
+<head><meta charset="utf-8"><title>Mermaid artifact example</title></head>
+<body>
+  <h1>Mermaid rendering check</h1>
+  <div class="mermaid">
+    flowchart TD
+      A[Start] --> B{Decision}
+      B -->|Yes| C[Do thing]
+      B -->|No| D[Skip]
+  </div>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: false, securityLevel: "strict" });
+    mermaid.run({ querySelector: ".mermaid" });
+  </script>
+</body>
+</html>
