@@ -175,14 +175,30 @@
   const cancelButton = composer.querySelector(".inkloop-cancel") as HTMLButtonElement;
   let pendingTarget: FeedbackTarget | null = null;
 
+  /** Pins the highlight box to a viewport rect and shows it, independent of picking mode — used
+   * both by the hover-highlight during picking and to keep the picked element/range visually
+   * anchored for as long as the composer stays open (issue #27). */
+  function pinHighlight(rect: DOMRectReadOnly): void {
+    highlight.style.left = `${rect.left}px`;
+    highlight.style.top = `${rect.top}px`;
+    highlight.style.width = `${rect.width}px`;
+    highlight.style.height = `${rect.height}px`;
+    highlight.classList.remove("inkloop-hidden");
+  }
+
   function hideComposer(): void {
     composer.classList.add("inkloop-hidden");
+    highlight.classList.add("inkloop-hidden");
     textarea.value = "";
     pendingTarget = null;
   }
 
-  function showComposerAt(x: number, y: number, target: FeedbackTarget): void {
+  // rect is the picked element/range's own bounding box (issue #27) — the highlight stays pinned
+  // to it for as long as the composer is open, not just during the hover/pick phase, so the human
+  // keeps the visual anchor for what they're commenting on while writing the comment.
+  function showComposerAt(x: number, y: number, target: FeedbackTarget, rect: DOMRectReadOnly): void {
     pendingTarget = target;
+    pinHighlight(rect);
     composer.style.left = `${Math.max(8, Math.min(x, window.innerWidth - 296))}px`;
     composer.style.top = `${Math.max(8, Math.min(y, window.innerHeight - 140))}px`;
     composer.classList.remove("inkloop-hidden");
@@ -228,12 +244,7 @@
         highlight.classList.add("inkloop-hidden");
         return;
       }
-      const rect = target.getBoundingClientRect();
-      highlight.style.left = `${rect.left}px`;
-      highlight.style.top = `${rect.top}px`;
-      highlight.style.width = `${rect.width}px`;
-      highlight.style.height = `${rect.height}px`;
-      highlight.classList.remove("inkloop-hidden");
+      pinHighlight(target.getBoundingClientRect());
     },
     { capture: true },
   );
@@ -246,8 +257,14 @@
       if (!(target instanceof Element) || isSdkNode(target)) return;
       event.preventDefault();
       event.stopPropagation();
+      const rect = target.getBoundingClientRect();
       setPickingElement(false);
-      showComposerAt(event.clientX, event.clientY, { kind: "element", selector: buildSelector(target) });
+      showComposerAt(
+        event.clientX,
+        event.clientY,
+        { kind: "element", selector: buildSelector(target) },
+        rect,
+      );
     },
     { capture: true },
   );
@@ -282,7 +299,7 @@
         ? { startOffset, endOffset: startOffset + text.length }
         : {}),
     };
-    showComposerAt(event.clientX, event.clientY, target);
+    showComposerAt(event.clientX, event.clientY, target, range.getBoundingClientRect());
   });
 
   // ---- postMessage bridge to the parent (review shell, issue #6) -------------------------
