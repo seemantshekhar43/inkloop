@@ -2,7 +2,7 @@ import http from "node:http";
 import { readFile } from "node:fs/promises";
 import type { ServerConfig } from "./config.js";
 import { isHostAllowed } from "./host-validation.js";
-import { readSessionRecordByHash } from "../shared/session-store.js";
+import { endSession, nextStepGuidance, readSessionRecordByHash } from "../shared/session-store.js";
 import { appendFeedback, readPendingFeedback, takePendingFeedback } from "../shared/feedback-store.js";
 import { isValidFeedbackBatch } from "../shared/feedback.js";
 import { appendAgentReply, isValidAgentReplyMessage } from "../shared/agent-reply-store.js";
@@ -23,6 +23,7 @@ const FEEDBACK_ROUTE = /^\/session\/([0-9a-f]{16})\/feedback\/?$/;
 const POLL_ROUTE = /^\/session\/([0-9a-f]{16})\/poll\/?$/;
 const AGENT_REPLY_ROUTE = /^\/session\/([0-9a-f]{16})\/agent-reply\/?$/;
 const RELOAD_ROUTE = /^\/session\/([0-9a-f]{16})\/reload\/?$/;
+const END_ROUTE = /^\/session\/([0-9a-f]{16})\/end\/?$/;
 
 /** How often the poll route re-checks for newly-queued feedback while it waits. */
 const POLL_CHECK_INTERVAL_MS = 300;
@@ -174,13 +175,21 @@ function sleep(ms: number): Promise<void> {
  *
  * Claims (marks delivered) whatever it returns via takePendingFeedback, so a subsequent poll
  * never redelivers the same items — see that function's docstring for the persistence model.
+ *
+ * Also watches the session's own status on every loop iteration (issue #9): if the session ends
+ * — whether it was already ended before this call started, or ends mid-wait (e.g. the user
+ * clicks "End session" in the browser while an agent is still polling) — this returns
+ * immediately rather than waiting out the rest of the timeout, delivering whatever feedback was
+ * still pending as the *final* batch alongside `ended`/`endedBy`/`next_step`. That's the "final
+ * feedback batch... carries next_step guidance" half of the issue; the other half is the
+ * no-pending-feedback case, which reaches the same `ended` shape with an empty `items` array.
  */
 async function handlePollRoute(
   res: http.ServerResponse,
   hash: string,
   pollTimeoutMs: number,
 ): Promise<void> {
-  const record = await readSessionRecordByHash(hash);
+  let record = await readSessionRecordByHash(hash);
   if (!record) {
     sendJson(res, 404, { error: "session_not_found" });
     return;
@@ -189,9 +198,19 @@ async function handlePollRoute(
   const deadline = Date.now() + pollTimeoutMs;
   for (;;) {
     const pending = await readPendingFeedback(hash);
-    if (pending.length > 0) {
-      const claimed = await takePendingFeedback(hash);
-      sendJson(res, 200, { items: claimed });
+    record = await readSessionRecordByHash(hash);
+    const guidance = record ? nextStepGuidance(record.status) : undefined;
+    const ended = guidance !== undefined;
+
+    if (pending.length > 0 || ended) {
+      const claimed = pending.length > 0 ? await takePendingFeedback(hash) : [];
+      const body: Record<string, unknown> = { items: claimed };
+      if (ended && record) {
+        body["ended"] = true;
+        body["endedBy"] = record.status === "user-ended" ? "user" : "agent";
+        body["next_step"] = guidance;
+      }
+      sendJson(res, 200, body);
       return;
     }
     if (Date.now() >= deadline) {
@@ -272,6 +291,28 @@ async function handleReloadRoute(
   sendJson(res, 200, { version });
 }
 
+/**
+ * User-initiated end (issue #9): the browser's "End session" button posts here. Ends the
+ * session with status "user-ended", the terminal state `openOrResumeSession` refuses to reopen
+ * without `--reopen` — see session-store.ts's docstring for the full reopen semantics. A poll
+ * already in flight for this session picks up the change on its very next loop iteration (see
+ * handlePollRoute above) rather than needing any direct signal from this route.
+ */
+async function handleEndRoute(res: http.ServerResponse, hash: string): Promise<void> {
+  const record = await readSessionRecordByHash(hash);
+  if (!record) {
+    sendJson(res, 404, { error: "session_not_found" });
+    return;
+  }
+
+  const updated = await endSession(record.filePath, "user");
+  sendJson(res, 200, {
+    status: "ended",
+    endedBy: "user",
+    next_step: nextStepGuidance(updated.status),
+  });
+}
+
 async function handleRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -320,6 +361,12 @@ async function handleRequest(
     return;
   }
 
+  const endMatch = END_ROUTE.exec(pathname);
+  if (req.method === "POST" && endMatch) {
+    await handleEndRoute(res, endMatch[1] as string);
+    return;
+  }
+
   const match = SESSION_ROUTE.exec(pathname);
   if (req.method === "GET" && match) {
     const [, hash, artifactSuffix] = match;
@@ -344,7 +391,8 @@ async function handleRequest(
  * GET /session/:hash/poll (long-poll for queued feedback, consumed by `inkloop poll`),
  * POST /session/:hash/agent-reply (record an agent's revision summary ahead of its next poll),
  * GET /session/:hash/reload (browser-side live-reload long-poll, watches the artifact and its
- * declared sibling assets for changes).
+ * declared sibling assets for changes), POST /session/:hash/end (user-initiated session end,
+ * the browser's "End session" button).
  */
 export function createInkloopServer(
   config: ServerConfig,

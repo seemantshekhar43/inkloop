@@ -2,6 +2,7 @@
 import { getVersion } from "../shared/version.js";
 import { runOpenCommand } from "./commands/open.js";
 import { runPollCommand } from "./commands/poll.js";
+import { runEndCommand } from "./commands/end.js";
 import { runServerCommand } from "./commands/server.js";
 
 const HELP_TEXT = `inkloop — local-first review loop for agent-written HTML artifacts
@@ -14,13 +15,7 @@ Usage:
   inkloop end <file>                      End a session (agent-initiated)
   inkloop --version                       Print the installed version
   inkloop --help                          Show this help text
-
-end is not implemented yet — see https://github.com/seemantshekhar43/inkloop/issues/9.
 `;
-
-const NOT_YET_IMPLEMENTED: Record<string, string> = {
-  end: "https://github.com/seemantshekhar43/inkloop/issues/9",
-};
 
 export async function run(argv: readonly string[]): Promise<number> {
   const [first, ...rest] = argv;
@@ -57,12 +52,13 @@ export async function run(argv: readonly string[]): Promise<number> {
     return runPollCommand(pollFile, agentReply === undefined ? {} : { agentReply });
   }
 
-  const notYetImplementedUrl = NOT_YET_IMPLEMENTED[first];
-  if (notYetImplementedUrl) {
-    process.stderr.write(
-      `inkloop: "${first}" is not implemented yet — tracked at ${notYetImplementedUrl}\n`,
-    );
-    return 1;
+  if (first === "end") {
+    const [endFile] = rest;
+    if (!endFile) {
+      process.stderr.write("inkloop: `end` requires a file argument\n\n" + HELP_TEXT);
+      return 1;
+    }
+    return runEndCommand(endFile);
   }
 
   if (first.startsWith("-")) {

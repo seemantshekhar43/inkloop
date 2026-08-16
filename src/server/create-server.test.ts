@@ -7,7 +7,7 @@ import os from "node:os";
 import path from "node:path";
 import { createInkloopServer } from "./create-server.js";
 import type { ServerConfig } from "./config.js";
-import { hashArtifactPath, openOrResumeSession } from "../shared/session-store.js";
+import { hashArtifactPath, openOrResumeSession, readSessionRecord } from "../shared/session-store.js";
 import { appendFeedback, readFeedback } from "../shared/feedback-store.js";
 import { readAgentReplies } from "../shared/agent-reply-store.js";
 
@@ -537,6 +537,131 @@ void test("reload route: times out at the current version with no change, and pi
     const unknownHash = "0".repeat(16);
     const missing = await request(port, `/session/${unknownHash}/reload?since=0`, { host: "127.0.0.1" });
     assert.equal(missing.status, 404);
+  } finally {
+    await instance.close();
+    process.env["INKLOOP_STATE_DIR"] = originalStateDir;
+    await rm(stateRoot, { recursive: true, force: true });
+    await rm(artifactDir, { recursive: true, force: true });
+  }
+});
+
+void test("end route: ends the session as user-ended and returns next_step guidance, unknown session 404s", async () => {
+  const stateRoot = await mkdtemp(path.join(os.tmpdir(), "inkloop-end-route-test-"));
+  const artifactDir = await mkdtemp(path.join(os.tmpdir(), "inkloop-end-route-artifact-"));
+  const originalStateDir = process.env["INKLOOP_STATE_DIR"];
+  process.env["INKLOOP_STATE_DIR"] = stateRoot;
+
+  const artifactPath = path.join(artifactDir, "artifact.html");
+  await writeFile(artifactPath, "<p>hi</p>", "utf8");
+
+  const instance = createInkloopServer(baseConfig());
+  const port = await instance.listening;
+  try {
+    await openOrResumeSession(artifactPath);
+    const hash = hashArtifactPath(artifactPath);
+
+    const { status, body } = await postJson(port, `/session/${hash}/end`, {});
+    assert.equal(status, 200);
+    const parsed = body as { status: string; endedBy: string; next_step: string };
+    assert.equal(parsed.status, "ended");
+    assert.equal(parsed.endedBy, "user");
+    assert.match(parsed.next_step, /refuse to reopen/);
+
+    const record = await readSessionRecord(artifactPath, stateRoot);
+    assert.equal(record?.status, "user-ended");
+
+    const unknownHash = "0".repeat(16);
+    const missing = await postJson(port, `/session/${unknownHash}/end`, {});
+    assert.equal(missing.status, 404);
+  } finally {
+    await instance.close();
+    process.env["INKLOOP_STATE_DIR"] = originalStateDir;
+    await rm(stateRoot, { recursive: true, force: true });
+    await rm(artifactDir, { recursive: true, force: true });
+  }
+});
+
+void test("poll route: an already-ended session returns the ended shape immediately instead of waiting out the timeout", async () => {
+  const stateRoot = await mkdtemp(path.join(os.tmpdir(), "inkloop-poll-ended-test-"));
+  const artifactDir = await mkdtemp(path.join(os.tmpdir(), "inkloop-poll-ended-artifact-"));
+  const originalStateDir = process.env["INKLOOP_STATE_DIR"];
+  process.env["INKLOOP_STATE_DIR"] = stateRoot;
+
+  const artifactPath = path.join(artifactDir, "artifact.html");
+  await writeFile(artifactPath, "<p>hi</p>", "utf8");
+
+  const instance = createInkloopServer(baseConfig({ pollTimeoutMs: 5000 }));
+  const port = await instance.listening;
+  try {
+    await openOrResumeSession(artifactPath);
+    const hash = hashArtifactPath(artifactPath);
+    await postJson(port, `/session/${hash}/end`, {});
+
+    const start = Date.now();
+    const { status, body } = await request(port, `/session/${hash}/poll`, { host: "127.0.0.1" });
+    assert.equal(status, 200);
+    assert.ok(Date.now() - start < 5000); // returned immediately, not after the 5s timeout
+    const parsed = body as { items: unknown[]; ended: boolean; endedBy: string; next_step: string };
+    assert.deepEqual(parsed.items, []);
+    assert.equal(parsed.ended, true);
+    assert.equal(parsed.endedBy, "user");
+    assert.match(parsed.next_step, /refuse to reopen/);
+  } finally {
+    await instance.close();
+    process.env["INKLOOP_STATE_DIR"] = originalStateDir;
+    await rm(stateRoot, { recursive: true, force: true });
+    await rm(artifactDir, { recursive: true, force: true });
+  }
+});
+
+void test("poll route: a session ended mid-wait resolves immediately with the final pending batch plus ended/next_step", async () => {
+  const stateRoot = await mkdtemp(path.join(os.tmpdir(), "inkloop-poll-end-midwait-test-"));
+  const artifactDir = await mkdtemp(path.join(os.tmpdir(), "inkloop-poll-end-midwait-artifact-"));
+  const originalStateDir = process.env["INKLOOP_STATE_DIR"];
+  process.env["INKLOOP_STATE_DIR"] = stateRoot;
+
+  const artifactPath = path.join(artifactDir, "artifact.html");
+  await writeFile(artifactPath, "<p>hi</p>", "utf8");
+
+  const instance = createInkloopServer(baseConfig({ pollTimeoutMs: 3000 }));
+  const port = await instance.listening;
+  try {
+    await openOrResumeSession(artifactPath);
+    const hash = hashArtifactPath(artifactPath);
+
+    // Poll starts against an empty queue, so it's genuinely waiting (in its sleep loop) when
+    // both the final feedback batch and the end both land shortly after — exercising the
+    // "pending items arrive in the same loop iteration the session ends" branch.
+    const pollPromise = request(port, `/session/${hash}/poll`, { host: "127.0.0.1" });
+    setTimeout(() => {
+      void postJson(port, `/session/${hash}/feedback`, [
+        {
+          id: "final-item",
+          target: { kind: "general" },
+          comment: "last one before ending",
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+      void postJson(port, `/session/${hash}/end`, {});
+    }, 50);
+
+    const start = Date.now();
+    const { status, body } = await pollPromise;
+    assert.equal(status, 200);
+    assert.ok(Date.now() - start < 3000);
+    const parsed = body as {
+      items: Array<{ id: string }>;
+      ended?: boolean;
+      endedBy?: string;
+      next_step?: string;
+    };
+    assert.deepEqual(
+      parsed.items.map((i) => i.id),
+      ["final-item"],
+    );
+    assert.equal(parsed.ended, true);
+    assert.equal(parsed.endedBy, "user");
+    assert.match(parsed.next_step ?? "", /refuse to reopen/);
   } finally {
     await instance.close();
     process.env["INKLOOP_STATE_DIR"] = originalStateDir;

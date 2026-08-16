@@ -9,6 +9,7 @@ import {
   readSessionRecord,
   openOrResumeSession,
   endSession,
+  nextStepGuidance,
   SessionNotFoundError,
   SessionCorruptError,
 } from "./session-store.js";
@@ -110,6 +111,20 @@ void test("endSession sets agent-ended vs user-ended correctly", async () => {
   assert.equal(userEnded.status, "user-ended");
 });
 
+void test("endSession does not downgrade a user-ended session to agent-ended", async () => {
+  const stateRoot = await tempStateRoot();
+
+  await openOrResumeSession("/fake/c.html", { stateRoot });
+  const userEnded = await endSession("/fake/c.html", "user", stateRoot);
+  assert.equal(userEnded.status, "user-ended");
+
+  const agentEnd = await endSession("/fake/c.html", "agent", stateRoot);
+  assert.equal(agentEnd.status, "user-ended");
+
+  const resumed = await openOrResumeSession("/fake/c.html", { stateRoot });
+  assert.equal(resumed.outcome, "refused");
+});
+
 void test("endSession throws SessionNotFoundError for a path with no session", async () => {
   const stateRoot = await tempStateRoot();
   await assert.rejects(() => endSession("/fake/never-opened.html", "agent", stateRoot), SessionNotFoundError);
@@ -140,4 +155,10 @@ void test("writes are atomic: no partial session.json is ever left on disk", asy
   const raw = await readFile(path.join(dir, "session.json"), "utf8");
   // A partial/truncated write would fail to parse; a fully-written file always parses.
   assert.doesNotThrow(() => JSON.parse(raw));
+});
+
+void test("nextStepGuidance: describes reopen semantics per status, undefined while still opened", () => {
+  assert.equal(nextStepGuidance("opened"), undefined);
+  assert.match(nextStepGuidance("agent-ended") ?? "", /may reopen it freely/);
+  assert.match(nextStepGuidance("user-ended") ?? "", /refuse to reopen it unless run with --reopen/);
 });

@@ -5,6 +5,23 @@ import path from "node:path";
 
 export type SessionStatus = "opened" | "agent-ended" | "user-ended";
 
+/**
+ * Human-readable guidance for what an agent should do next, given a session's terminal status.
+ * Shared by the poll route's "ended" response (issue #7) and `inkloop end`'s own output (issue
+ * #9) so both surfaces describe the same reopen semantics in the same words. Returns undefined
+ * for "opened" — there's nothing to guide the agent about while a session is still active.
+ */
+export function nextStepGuidance(status: SessionStatus): string | undefined {
+  switch (status) {
+    case "agent-ended":
+      return "You ended this session. A later `inkloop <file>` may reopen it freely if further review is needed.";
+    case "user-ended":
+      return "The user ended this session from the browser. A later `inkloop <file>` will refuse to reopen it unless run with --reopen.";
+    case "opened":
+      return undefined;
+  }
+}
+
 export interface SessionRecord {
   /** Absolute path of the artifact this session reviews. */
   filePath: string;
@@ -156,6 +173,10 @@ export async function openOrResumeSession(
 /**
  * Ends a session. Throws SessionNotFoundError if no session was ever opened for this path —
  * ending a session that doesn't exist is a caller bug, not a state worth silently accepting.
+ *
+ * A user-ended session is terminal against agent-initiated ends: once status is 'user-ended',
+ * a later endSession(path, 'agent') call is a no-op on status so it can't downgrade the
+ * reopen-refusal guarantee back to 'agent-ended'.
  */
 export async function endSession(
   absolutePath: string,
@@ -165,9 +186,11 @@ export async function endSession(
   const existing = await readSessionRecord(absolutePath, stateRoot);
   if (!existing) throw new SessionNotFoundError(absolutePath);
 
+  const status =
+    existing.status === "user-ended" ? "user-ended" : endedBy === "agent" ? "agent-ended" : "user-ended";
   const record: SessionRecord = {
     ...existing,
-    status: endedBy === "agent" ? "agent-ended" : "user-ended",
+    status,
     updatedAt: new Date().toISOString(),
   };
   await writeSessionRecordAtomic(record, stateRoot);

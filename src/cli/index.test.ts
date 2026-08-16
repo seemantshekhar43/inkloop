@@ -68,11 +68,18 @@ void test("poll with no session for the file exits 1 (routing is covered end to 
   assert.match(text, /no session found/);
 });
 
-void test("end is recognized but reports not-yet-implemented with a tracking link", async () => {
-  const { code, text } = await captureWrite(process.stderr, () => run(["end", "file.html"]));
+void test("end without a file argument exits 1 and prints usage", async () => {
+  const { code, text } = await captureWrite(process.stderr, () => run(["end"]));
   assert.equal(code, 1);
-  assert.match(text, /not implemented yet/);
-  assert.match(text, /issues\/9/);
+  assert.match(text, /requires a file argument/);
+});
+
+void test("end with no session for the file exits 1 (routing is covered end to end in commands/end.test.ts)", async () => {
+  const { code, text } = await captureWrite(process.stderr, () =>
+    run(["end", "/nonexistent/artifact.html"]),
+  );
+  assert.equal(code, 1);
+  assert.match(text, /no session found/);
 });
 
 void test("a bare non-flag argument is routed to the open command", async () => {
