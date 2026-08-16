@@ -139,9 +139,9 @@
       border-radius: 10px; padding: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.35);
     }
     .inkloop-composer textarea {
-      width: 100%; min-height: 56px; box-sizing: border-box; resize: vertical;
-      background: #101014; color: inherit; border: 1px solid #3a3a44; border-radius: 6px;
-      padding: 6px; font: inherit; margin-bottom: 6px;
+      width: 100%; min-height: 56px; max-height: 200px; box-sizing: border-box; resize: none;
+      overflow-y: auto; background: #101014; color: inherit; border: 1px solid #3a3a44;
+      border-radius: 6px; padding: 6px; font: inherit; margin-bottom: 6px;
     }
     .inkloop-composer .inkloop-actions { display: flex; justify-content: flex-end; gap: 6px; }
     .inkloop-composer button {
@@ -186,10 +186,28 @@
     highlight.classList.remove("inkloop-hidden");
   }
 
+  /**
+   * Auto-grows the textarea to fit its content (issue #41), up to the CSS max-height above,
+   * beyond which it scrolls internally instead of continuing to grow. Resetting height to "auto"
+   * first (rather than only ever growing) lets scrollHeight shrink back down too, e.g. after the
+   * user deletes a line or the composer is reopened with an empty value.
+   */
+  function autoGrowTextarea(): void {
+    textarea.style.height = "auto";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+    // The composer is positioned near the click point with a static estimate of its own height
+    // (see showComposerAt below); once the textarea grows past that estimate, re-clamp so the
+    // composer itself doesn't run off the bottom of the viewport.
+    const maxTop = window.innerHeight - composer.getBoundingClientRect().height - 8;
+    const currentTop = parseFloat(composer.style.top) || 0;
+    if (currentTop > maxTop) composer.style.top = `${Math.max(8, maxTop)}px`;
+  }
+
   function hideComposer(): void {
     composer.classList.add("inkloop-hidden");
     highlight.classList.add("inkloop-hidden");
     textarea.value = "";
+    textarea.style.height = "";
     pendingTarget = null;
   }
 
@@ -203,6 +221,7 @@
     composer.style.top = `${Math.max(8, Math.min(y, window.innerHeight - 140))}px`;
     composer.classList.remove("inkloop-hidden");
     textarea.value = "";
+    textarea.style.height = "";
     textarea.focus();
   }
 
@@ -211,6 +230,7 @@
     hideComposer();
   });
   cancelButton.addEventListener("click", hideComposer);
+  textarea.addEventListener("input", autoGrowTextarea);
 
   // ---- Element picker ---------------------------------------------------------------------
 
