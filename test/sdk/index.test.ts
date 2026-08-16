@@ -34,3 +34,22 @@ void test("issue #37: the link-navigation guard is registered before the element
     "link-navigation guard must run before the picker handler so both listeners see the click",
   );
 });
+
+void test("issue #41: the composer textarea auto-grows with content up to a capped max-height", () => {
+  // `resize: none` plus the max-height/overflow pairing is what turns the textarea from a
+  // fixed-size scrolling box into one that grows with content and then scrolls internally past
+  // the cap, so a future edit reverting any one of these regresses the fix silently.
+  assert.match(sdkSource, /max-height:\s*200px/);
+  assert.match(sdkSource, /overflow-y:\s*auto/);
+  assert.match(sdkSource, /resize:\s*none/);
+  assert.match(sdkSource, /textarea\.addEventListener\("input",\s*autoGrowTextarea\)/);
+});
+
+void test("issue #41: the composer re-clamps its own position so growth can't push it off-screen", () => {
+  // autoGrowTextarea must reset height to "auto" before reading scrollHeight (so it can shrink
+  // back down, not just grow) and must re-check the composer's own bounding box against
+  // window.innerHeight, since it's positioned near the click point with only a static estimate.
+  assert.match(sdkSource, /textarea\.style\.height = "auto"/);
+  assert.match(sdkSource, /textarea\.style\.height = `\$\{textarea\.scrollHeight\}px`/);
+  assert.match(sdkSource, /window\.innerHeight - composer\.getBoundingClientRect\(\)\.height/);
+});
