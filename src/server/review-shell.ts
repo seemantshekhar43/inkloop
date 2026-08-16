@@ -2,12 +2,18 @@
  * The review UI shell (issue #6, polished in #18): the browser-side page a human actually uses,
  * hosting the artifact iframe plus the annotation composer and queue thread around it.
  *
- * Deliberately not a right-hand comment sidebar — the layout AGENTS.md's "visual novelty"
- * non-negotiable rules out as the generic pattern this space already has (lavish-axi,
- * sidenote-cli, Percy/Chromatic reviewers all read as some variant of it). Instead the artifact
- * keeps the full viewport width and a bottom dock holds a horizontally-scrolling annotation
- * thread plus the free-text composer, so review chrome never competes with the artifact for
- * horizontal space the way a sidebar does.
+ * Issue #43 re-evaluated the original bottom-dock layout (below) against a fixed-width right-side
+ * panel: the round-history transcript grows unboundedly, and a bottom dock competing for
+ * *vertical* space with the artifact got worse the longer a session ran, whereas a side panel
+ * trades a fixed slice of horizontal space (usually more abundant on a reviewer's monitor) for
+ * giving the artifact the full viewport height back. The AGENTS.md "visual novelty" non-negotiable
+ * that ruled out a sidebar the first time around is still respected on its own terms, not
+ * abandoned: this isn't lavish-axi's chat-bubble "Conversation" sidebar reskinned, it's the same
+ * round-grouped transcript shape and pill-tag treatment from the bottom-dock version, just
+ * reflowed into a vertical column instead of a horizontal strip. Below ~900px width — where the
+ * horizontal space a side panel needs is the scarcer resource, not the vertical space it was
+ * saving — a media query alone (no JS, no user preference to maintain) folds the panel back into
+ * a bottom dock, so the original layout's reasoning still applies exactly where it was strongest.
  *
  * This page and the injected SDK (src/sdk/index.ts, running inside the iframe) talk over
  * postMessage only, restricted to same-origin on both ends — see the SDK's own header comment
@@ -111,31 +117,23 @@ export function renderReviewShell(hash: string): string {
     background: var(--ink-accent); border-bottom: 1px solid var(--ink-border);
   }
   .picking-hint.visible { display: flex; }
+  .content { flex: 1 1 auto; display: flex; flex-direction: row; min-height: 0; }
   main { flex: 1 1 auto; position: relative; min-height: 0; }
   iframe { border: 0; width: 100%; height: 100%; display: block; background: #fff; }
-  footer {
-    flex: 0 0 auto; display: flex; flex-direction: column; max-height: 40vh;
-    border-top: 1px solid var(--ink-border); background: var(--ink-panel);
-    transition: max-height 0.15s ease;
+  /* Issue #43: a fixed-width right-side panel instead of the full-width bottom dock — see the
+     file header comment for the reasoning and the <900px fallback below. */
+  aside#dock {
+    flex: 0 0 340px; width: 340px; display: flex; flex-direction: column; min-height: 0;
+    border-left: 1px solid var(--ink-border); background: var(--ink-panel);
   }
-  footer.history-expanded { max-height: 75vh; }
-  .history-handle {
-    flex: 0 0 auto; appearance: none; border: 0; width: 100%; text-align: left;
-    display: flex; align-items: center; gap: var(--space-2);
-    background: transparent; color: var(--ink-dim); font: inherit; font-size: 11px;
-    padding: var(--space-2) var(--space-4); cursor: pointer;
-    border-bottom: 1px solid transparent; transition: color 0.12s ease;
+  .dock-section-label {
+    flex: 0 0 auto; font-size: 11px; color: var(--ink-dim);
+    padding: var(--space-3) var(--space-4) var(--space-2);
   }
-  .history-handle:hover { color: var(--ink-text); }
-  .history-handle .chevron { display: inline-block; color: var(--ink-accent); transition: transform 0.15s ease; }
-  footer.history-expanded .history-handle { border-bottom-color: var(--ink-border); }
-  footer.history-expanded .history-handle .chevron { transform: rotate(180deg); }
   .history-panel {
-    flex: 0 1 auto; display: none; flex-direction: column; gap: var(--space-3);
-    overflow-y: auto; min-height: 0; padding: var(--space-3) var(--space-4);
-    border-bottom: 1px solid var(--ink-border);
+    flex: 1 1 auto; display: flex; flex-direction: column; gap: var(--space-3);
+    overflow-y: auto; min-height: 80px; padding: 0 var(--space-4) var(--space-3);
   }
-  footer.history-expanded .history-panel { display: flex; }
   .history-empty { color: var(--ink-dim); font-size: 12px; }
   .history-round { display: flex; flex-direction: column; gap: var(--space-2); }
   .history-round-label {
@@ -165,12 +163,18 @@ export function renderReviewShell(hash: string): string {
     letter-spacing: 0.05em; margin-bottom: var(--space-1);
   }
   .history-reply-message { color: var(--ink-text); font-size: 12px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
-  .thread { display: flex; gap: var(--space-2); overflow-x: auto; padding: var(--space-3) var(--space-4); }
+  /* The queued-but-unsent draft thread: a horizontally-scrolling strip in the old bottom dock,
+     now a vertical stack — the side panel's column is narrower than most drafts' natural width,
+     so stacking reads better than a second internal scrollbar running the other way. */
+  .thread {
+    flex: 0 1 auto; display: flex; flex-direction: column; gap: var(--space-2);
+    overflow-y: auto; max-height: 40%; min-height: 0;
+    padding: var(--space-3) var(--space-4); border-top: 1px solid var(--ink-border);
+  }
   .thread-empty { color: var(--ink-dim); font-size: 12px; padding: var(--space-1) 0; }
   .thread-empty::before { content: "› "; color: var(--ink-accent); }
   .pill {
-    position: relative; flex: 0 0 auto; max-width: 260px; min-width: 120px;
-    border: 1px solid var(--ink-border); border-radius: 8px;
+    position: relative; border: 1px solid var(--ink-border); border-radius: 8px;
     padding: var(--space-2) var(--space-3); padding-right: 26px;
     background: #1a1a22; font-size: 12px; line-height: 1.4;
     transition: border-color 0.12s ease;
@@ -187,18 +191,23 @@ export function renderReviewShell(hash: string): string {
     color: var(--ink-dim); font: inherit; line-height: 1; cursor: pointer;
   }
   .pill-remove:hover { background: var(--ink-border); color: var(--ink-text); }
-  .composer-row { display: flex; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--ink-border); }
+  /* Stacked, not the old side-by-side row — 340px isn't wide enough for a textarea and a
+     same-line Send button both to read comfortably. */
+  .composer-row {
+    flex: 0 0 auto; display: flex; flex-direction: column; gap: var(--space-2);
+    padding: var(--space-3) var(--space-4); border-top: 1px solid var(--ink-border);
+  }
   .composer-row textarea {
-    flex: 1; resize: vertical; min-height: 36px; max-height: 120px;
+    resize: vertical; min-height: 36px; max-height: 160px;
     background: #101014; color: var(--ink-text); border: 1px solid var(--ink-border);
     border-radius: 6px; padding: var(--space-2); font: inherit;
   }
   .composer-row textarea:focus { outline: none; border-color: var(--ink-accent); }
   .composer-row textarea:disabled { opacity: 0.4; cursor: default; }
   .composer-row button {
-    appearance: none; border: 0; border-radius: 6px; padding: 0 var(--space-4); font: inherit;
-    cursor: pointer; background: var(--ink-accent); color: var(--ink-accent-text);
-    transition: opacity 0.12s ease;
+    appearance: none; border: 0; border-radius: 6px; padding: var(--space-2) var(--space-4);
+    font: inherit; cursor: pointer; background: var(--ink-accent); color: var(--ink-accent-text);
+    align-self: flex-end; transition: opacity 0.12s ease;
   }
   .composer-row button:disabled { opacity: 0.4; cursor: default; }
   .composer-row button.sending { opacity: 0.7; cursor: progress; }
@@ -206,12 +215,25 @@ export function renderReviewShell(hash: string): string {
   .status.success { color: var(--ink-success); }
   .status.error { color: var(--ink-error); }
 
+  /* Issue #43: below ~900px, the side panel's fixed width becomes the scarcer resource rather
+     than the vertical space it reclaims — fold back into a full-width bottom dock, the layout
+     the original bottom-dock design was tuned for. Pure CSS, no JS/state: the same DOM just
+     reflows depending on viewport width. */
+  @media (max-width: 900px) {
+    .content { flex-direction: column; }
+    aside#dock {
+      flex: 0 0 auto; width: 100%; max-height: 45vh;
+      border-left: 0; border-top: 1px solid var(--ink-border);
+    }
+    .thread { flex-direction: row; overflow-x: auto; overflow-y: visible; max-height: none; }
+    .pill { flex: 0 0 auto; max-width: 260px; min-width: 120px; }
+    .composer-row { flex-direction: row; align-items: flex-start; }
+    .composer-row textarea { flex: 1; max-height: 120px; }
+    .composer-row button { align-self: stretch; }
+  }
+
   @media (max-width: 480px) {
-    footer { max-height: 55vh; }
-    footer.history-expanded { max-height: 85vh; }
-    .pill { max-width: 200px; }
-    .composer-row { flex-direction: column; }
-    .composer-row button { align-self: flex-end; }
+    aside#dock { max-height: 55vh; }
   }
 </style>
 </head>
@@ -227,23 +249,23 @@ export function renderReviewShell(hash: string): string {
 <div class="picking-hint" id="picking-hint">Click an element in the artifact to annotate it — click “Select element” again to cancel.</div>
 <div class="ended-banner" id="ended-banner">Session ended. Run <code>inkloop</code> on this file again with <code>--reopen</code> to resume review.</div>
 <div class="tab-banner" id="tab-banner">This session may be open in another tab — annotations from both could interleave.</div>
-<main>
-  <iframe id="artifact-frame" src="/session/${hash}/artifact" title="artifact preview"></iframe>
-</main>
-<footer id="dock">
-  <button type="button" class="history-handle" id="history-handle">
-    <span class="chevron">▲</span><span id="history-label">History · 0 rounds, 0 comments</span>
-  </button>
-  <div class="history-panel" id="history-panel"></div>
-  <div class="thread" id="thread">
-    <div class="thread-empty">No annotations queued yet — select an element, select text, or write a note below.</div>
-  </div>
-  <div class="composer-row">
-    <textarea id="composer" placeholder="Write a note… (not tied to a specific element)"></textarea>
-    <button type="button" id="send-btn" disabled>Send</button>
-  </div>
-  <div class="status" id="status"></div>
-</footer>
+<div class="content">
+  <main>
+    <iframe id="artifact-frame" src="/session/${hash}/artifact" title="artifact preview"></iframe>
+  </main>
+  <aside id="dock">
+    <div class="dock-section-label" id="history-label">History · 0 rounds, 0 comments</div>
+    <div class="history-panel" id="history-panel"></div>
+    <div class="thread" id="thread">
+      <div class="thread-empty">No annotations queued yet — select an element, select text, or write a note below.</div>
+    </div>
+    <div class="composer-row">
+      <textarea id="composer" placeholder="Write a note… (not tied to a specific element)"></textarea>
+      <button type="button" id="send-btn" disabled>Send</button>
+    </div>
+    <div class="status" id="status"></div>
+  </aside>
+</div>
 <script>
 (function () {
   var iframe = document.getElementById('artifact-frame');
@@ -257,8 +279,6 @@ export function renderReviewShell(hash: string): string {
   var composer = document.getElementById('composer');
   var sendBtn = document.getElementById('send-btn');
   var statusEl = document.getElementById('status');
-  var dock = document.getElementById('dock');
-  var historyHandle = document.getElementById('history-handle');
   var historyPanel = document.getElementById('history-panel');
   var historyLabel = document.getElementById('history-label');
   var picking = false;
@@ -266,7 +286,6 @@ export function renderReviewShell(hash: string): string {
   var lastScrollY = 0;
   var ended = false;
   var reloadPollingActive = true;
-  var historyExpanded = false;
   var SESSION_HASH = ${JSON.stringify(hash)};
 
   // Issue #40: a per-tab id, stable for this tab's lifetime (sessionStorage, not localStorage —
@@ -338,20 +357,12 @@ export function renderReviewShell(hash: string): string {
     updateHistoryLabel();
   }
 
-  // ---- Round-history panel (issue #21) -----------------------------------------------------
-  // The vertically-scrolling history panel above the compose dock: past rounds of sent
-  // annotations paired with the agent's "Agent revised" reply for that round, if any. The dock
-  // stays collapsed by default (unchanged from before this issue); expanding it just grows the
-  // footer and reveals this panel above the still-horizontal draft thread/composer.
-
-  function setHistoryExpanded(value) {
-    historyExpanded = value;
-    dock.classList.toggle('history-expanded', historyExpanded);
-  }
-
-  historyHandle.addEventListener('click', function () {
-    setHistoryExpanded(!historyExpanded);
-  });
+  // ---- Round-history panel (issue #21, reflowed into the side panel by #43) -----------------
+  // Past rounds of sent annotations paired with the agent's "Agent revised" reply for that
+  // round, if any. Always visible in its own scrollable section of the side panel now — the
+  // collapse/expand toggle from the bottom-dock version existed to reclaim vertical space the
+  // dock was borrowing from the artifact; a fixed-width side panel doesn't borrow that space, so
+  // there's nothing left to reclaim and the toggle is gone.
 
   // Issue #38: the label used to be driven only by server-side sent history, so it read
   // "0 rounds · 0 comments" the entire time annotations sat queued-but-unsent in the composer —
