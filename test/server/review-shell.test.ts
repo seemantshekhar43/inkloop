@@ -70,6 +70,22 @@ void test("escapes untrusted queue content before interpolating it into pill mar
   assert.match(html, /escapeHtml\(String\(item\.target\.quote\)/);
 });
 
+void test("issue #38: the round/comment label reflects the live queue, not just sent history", () => {
+  const html = renderReviewShell(HASH);
+  // updateHistoryLabel must exist and be the sole writer of historyLabel's text, combining the
+  // last-fetched sent-round counts with however many items are currently queued but unsent — the
+  // bug was that the label only ever reflected server-fetched history, so it read
+  // "0 rounds · 0 comments" the entire time annotations sat queued in the composer.
+  assert.match(html, /function updateHistoryLabel/);
+  assert.match(html, /items\.length > 0/);
+  assert.match(html, /items\.length \+ ' queued'/);
+  // render() (called on every SDK inkloop:queue message, i.e. every queue change) must refresh
+  // the label too, not just renderHistory() after a send.
+  const renderFnMatch = html.match(/function render\(\) \{[\s\S]*?\n {2}\}/);
+  assert.ok(renderFnMatch, "expected to find render()'s body");
+  assert.match(renderFnMatch[0], /updateHistoryLabel\(\);/);
+});
+
 void test("live reload (issue #8): long-polls /reload, reloads the iframe on a version bump, and restores draft state on inkloop:ready", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, new RegExp(`SESSION_HASH = ${JSON.stringify(HASH)}`));

@@ -249,6 +249,24 @@
     { capture: true },
   );
 
+  /**
+   * Never let the artifact's own links navigate the review iframe away (issue #37) — a reviewer
+   * clicking or selecting an ordinary `<a href>` (a citation, a "view source" link, anything an
+   * agent legitimately adds) would otherwise lose the whole review surface with no way back short
+   * of reloading the session URL. Applies regardless of picking mode: even outside element-picking,
+   * a click/selection on a link is still a click inside the artifact, not a request to browse away
+   * from it.
+   */
+  document.addEventListener(
+    "click",
+    (event) => {
+      const target = event.target;
+      if (!(target instanceof Element) || isSdkNode(target)) return;
+      if (target.closest("a[href]")) event.preventDefault();
+    },
+    { capture: true },
+  );
+
   document.addEventListener(
     "click",
     (event) => {
