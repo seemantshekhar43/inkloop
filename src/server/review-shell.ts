@@ -302,6 +302,11 @@ export function renderReviewShell(hash: string): string {
     // Only touch the disabled state here — the "sending" in-flight state is driven separately
     // by the send button's own click handler and the sent/error responses below.
     if (!sendBtn.classList.contains('sending')) sendBtn.disabled = items.length === 0;
+    // Issue #38: keep the history label's queued count in sync with every queue change too, not
+    // just with the sent-history refetch — updateHistoryLabel is defined below but already
+    // hoisted by the time render() is ever called (first call is render() at the bottom of this
+    // script, after every function in this closure has been declared).
+    updateHistoryLabel();
   }
 
   // ---- Round-history panel (issue #21) -----------------------------------------------------
@@ -319,11 +324,28 @@ export function renderReviewShell(hash: string): string {
     setHistoryExpanded(!historyExpanded);
   });
 
-  function renderHistory(history) {
-    var rounds = (history && history.rounds) || [];
-    var commentCount = (history && history.commentCount) || 0;
-    historyLabel.textContent = rounds.length + (rounds.length === 1 ? ' round' : ' rounds')
+  // Issue #38: the label used to be driven only by server-side sent history, so it read
+  // "0 rounds · 0 comments" the entire time annotations sat queued-but-unsent in the composer —
+  // indistinguishable from a session with nothing queued at all. lastHistory carries the
+  // last-fetched sent-round counts forward so updateHistoryLabel can combine them with the live
+  // (unsent) queue length from render(), regardless of which one changed most recently.
+  var lastHistory = { rounds: [], commentCount: 0 };
+
+  function updateHistoryLabel() {
+    var rounds = lastHistory.rounds || [];
+    var commentCount = lastHistory.commentCount || 0;
+    var label = rounds.length + (rounds.length === 1 ? ' round' : ' rounds')
       + ' · ' + commentCount + (commentCount === 1 ? ' comment' : ' comments');
+    if (items.length > 0) {
+      label += ' · ' + items.length + ' queued';
+    }
+    historyLabel.textContent = label;
+  }
+
+  function renderHistory(history) {
+    lastHistory = history || lastHistory;
+    var rounds = lastHistory.rounds || [];
+    updateHistoryLabel();
 
     if (rounds.length === 0) {
       historyPanel.innerHTML = '<div class="history-empty">No rounds sent yet.</div>';
