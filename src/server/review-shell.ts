@@ -43,6 +43,12 @@ export function renderReviewShell(hash: string): string {
     --ink-accent: #6f5bff;
     --ink-accent-soft: rgba(111, 91, 255, 0.12);
     --ink-accent-text: #ffffff;
+    /* Issue #44: --ink-accent itself is only ~3.6:1 against the tinted pill/history-item
+       backgrounds it sits on as text (the ELEMENT/SELECTION target labels) — under the 4.5:1
+       WCAG minimum for text that size. A lighter tint of the same hue clears it comfortably
+       (6:1+) without touching --ink-accent's own uses as a background/border color, which were
+       already fine. */
+    --ink-accent-label: #9d8fff;
     /* Second accent (issue #21): amber, reserved for anything agent-authored (the "Agent
        revised" entries in the round-history panel) so it never reads as ambiguous with the
        violet used for human annotations everywhere else. */
@@ -145,7 +151,7 @@ export function renderReviewShell(hash: string): string {
     border-radius: 0 6px 6px 0; padding: var(--space-1) var(--space-2); font-size: 12px; line-height: 1.4;
   }
   .history-item-target {
-    color: var(--ink-accent); font-size: 10px; text-transform: uppercase;
+    color: var(--ink-accent-label); font-size: 10px; text-transform: uppercase;
     letter-spacing: 0.05em; margin-right: var(--space-1);
   }
   .history-item-comment { color: var(--ink-text); word-break: break-word; }
@@ -181,7 +187,7 @@ export function renderReviewShell(hash: string): string {
   }
   .pill:hover { border-color: var(--ink-accent); }
   .pill .pill-target {
-    color: var(--ink-accent); font-size: 10px; text-transform: uppercase;
+    color: var(--ink-accent-label); font-size: 10px; text-transform: uppercase;
     letter-spacing: 0.05em; margin-bottom: var(--space-1);
   }
   .pill .pill-comment { color: var(--ink-text); white-space: normal; word-break: break-word; }
@@ -204,6 +210,13 @@ export function renderReviewShell(hash: string): string {
   }
   .composer-row textarea:focus { outline: none; border-color: var(--ink-accent); }
   .composer-row textarea:disabled { opacity: 0.4; cursor: default; }
+  /* Issue #44: pinned explicitly rather than left to the browser's own placeholder styling —
+     Chrome/Firefox/Safari each dim placeholder text by a different default opacity, none of
+     which is guaranteed to clear 4.5:1 against this dark input background. --ink-dim itself
+     passes comfortably (~6:1) here, so setting it directly (and opacity: 1, since Firefox
+     applies its own dimming on top of the color otherwise) makes the contrast a property of
+     this stylesheet, not of whichever browser the reviewer happens to be running. */
+  .composer-row textarea::placeholder { color: var(--ink-dim); opacity: 1; }
   .composer-row button {
     appearance: none; border: 0; border-radius: 6px; padding: var(--space-2) var(--space-4);
     font: inherit; cursor: pointer; background: var(--ink-accent); color: var(--ink-accent-text);

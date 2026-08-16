@@ -126,17 +126,16 @@ void test("ArtifactWatcher detects an atomic rename-over-replace, not just an in
 
   const watcher = new ArtifactWatcher(artifactPath, []);
   try {
-    let fired = false;
-    watcher.on("change", () => {
-      fired = true;
-    });
-
     const tmpPath = path.join(dir, "artifact.html.tmp");
     await writeFile(tmpPath, "<p>v2</p>", "utf8");
     await rename(tmpPath, artifactPath);
 
-    await sleep(500);
-    assert.equal(fired, true);
+    // Event-driven wait (mirrors the in-place-write test above), not a fixed sleep-then-check —
+    // a flat 500ms was flaky under load (a slow CI runner or, locally, other test files/builds
+    // competing for CPU could all push the fs event past that fixed window). waitForChange
+    // resolves the moment the 'change' event fires instead of racing the wall clock.
+    const version = await waitForChange(watcher, 0, 5000);
+    assert.equal(version, 1);
     assert.equal(await readFile(artifactPath, "utf8"), "<p>v2</p>");
   } finally {
     watcher.close();
