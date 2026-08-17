@@ -64,7 +64,12 @@ export function renderReviewShell(hash: string): string {
   * { box-sizing: border-box; }
   html, body {
     margin: 0; height: 100%;
-    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    /* Matches axi.md's own mono stack (kunchenguid-design-system's --font-mono) so the two share
+       a font identity where a reviewer is likely to have both open — JetBrains Mono/Fira Code
+       first if installed locally, falling through to the same system-monospace stack as before
+       otherwise. No webfont load: inkloop stays local-first/no-CDN (see README), so this is a
+       font-family preference only, never a network fetch. */
+    font-family: "JetBrains Mono", "Fira Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     font-size: 13px;
     background: var(--ink-bg); color: var(--ink-text);
   }
@@ -117,12 +122,20 @@ export function renderReviewShell(hash: string): string {
     background: var(--ink-agent-soft); border-bottom: 1px solid var(--ink-border);
   }
   .tab-banner.visible { display: flex; }
+  /* Issue #61: shown as a one-time reminder when Sidenote turns on, not for as long as picking
+     mode stays active — the toggle button itself (active/pressed state, dot lit, "Stop Sidenote"
+     label) is the persistent indicator, so the banner only needs to teach the mechanism once per
+     activation, then get out of the way. .fading drives the opacity transition below the
+     JS-controlled auto-hide timer, so the banner's departure reads as an intentional dismissal
+     rather than a jump-cut. */
   .picking-hint {
     flex: 0 0 auto; display: none; align-items: center;
     padding: var(--space-2) var(--space-4); font-size: 12px; color: var(--ink-accent-text);
     background: var(--ink-accent); border-bottom: 1px solid var(--ink-border);
+    opacity: 1; transition: opacity 0.3s ease;
   }
   .picking-hint.visible { display: flex; }
+  .picking-hint.fading { opacity: 0; }
   .content { flex: 1 1 auto; display: flex; flex-direction: row; min-height: 0; }
   main { flex: 1 1 auto; position: relative; min-height: 0; }
   iframe { border: 0; width: 100%; height: 100%; display: block; background: #fff; }
@@ -228,6 +241,38 @@ export function renderReviewShell(hash: string): string {
   .status.success { color: var(--ink-success); }
   .status.error { color: var(--ink-error); }
 
+  /* Issue #59: a themed in-app modal replacing window.confirm() for the End-session prompt —
+     the native dialog can't be styled and reads as generic browser chrome next to the rest of
+     this shell. */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; z-index: 10;
+    align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.6);
+  }
+  .modal-overlay.visible { display: flex; }
+  .modal {
+    width: min(320px, calc(100vw - var(--space-4) * 2));
+    background: var(--ink-panel); border: 1px solid var(--ink-border); border-radius: 8px;
+    padding: var(--space-4); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+  .modal-title { font-weight: 700; margin-bottom: var(--space-2); }
+  .modal-body { color: var(--ink-dim); font-size: 12px; line-height: 1.5; }
+  .modal-body code {
+    background: #1a1a22; border-radius: 4px; padding: 1px 4px; color: var(--ink-text);
+    font-size: 11px;
+  }
+  .modal-actions {
+    display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-4);
+  }
+  .modal-actions button {
+    appearance: none; border-radius: 6px; padding: var(--space-2) var(--space-3);
+    font: inherit; cursor: pointer; transition: background-color 0.12s ease, border-color 0.12s ease;
+  }
+  .modal-cancel { border: 1px solid var(--ink-border); background: transparent; color: var(--ink-text); }
+  .modal-cancel:hover { border-color: var(--ink-dim); }
+  .modal-confirm { border: 1px solid var(--ink-error); background: var(--ink-error); color: var(--ink-accent-text); }
+  .modal-confirm:hover { opacity: 0.9; }
+
   /* Issue #43: below ~900px, the side panel's fixed width becomes the scarcer resource rather
      than the vertical space it reclaims — fold back into a full-width bottom dock, the layout
      the original bottom-dock design was tuned for. Pure CSS, no JS/state: the same DOM just
@@ -259,8 +304,8 @@ export function renderReviewShell(hash: string): string {
   </button>
   <button type="button" class="end-session" id="end-btn">End session</button>
 </header>
-<div class="picking-hint" id="picking-hint">Click an element in the artifact to annotate it — click “Cancel Sidenote” again to cancel.</div>
-<div class="ended-banner" id="ended-banner">Session ended. Run <code>inkloop</code> on this file again with <code>--reopen</code> to resume review.</div>
+<div class="picking-hint" id="picking-hint">Click an element in the artifact to annotate it — click “Stop Sidenote” again to stop.</div>
+<div class="ended-banner" id="ended-banner">Session ended. Run <code>inkloop &lt;file&gt; --reopen</code> to resume review.</div>
 <div class="tab-banner" id="tab-banner">This session may be open in another tab — annotations from both could interleave.</div>
 <div class="content">
   <main>
@@ -273,11 +318,21 @@ export function renderReviewShell(hash: string): string {
       <div class="thread-empty">No annotations queued yet — select an element, select text, or write a note below.</div>
     </div>
     <div class="composer-row">
-      <textarea id="composer" placeholder="Write a note… (not tied to a specific element)"></textarea>
+      <textarea id="composer" placeholder="Write a note to agent…"></textarea>
       <button type="button" id="send-btn" disabled>Send</button>
     </div>
     <div class="status" id="status"></div>
   </aside>
+</div>
+<div class="modal-overlay" id="end-modal-overlay">
+  <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="end-modal-title">
+    <div class="modal-title" id="end-modal-title">End review session?</div>
+    <div class="modal-body">Ends this review session. Resume it later with <code>inkloop &lt;file&gt; --reopen</code>.</div>
+    <div class="modal-actions">
+      <button type="button" class="modal-cancel" id="end-modal-cancel">Cancel</button>
+      <button type="button" class="modal-confirm" id="end-modal-confirm">End session</button>
+    </div>
+  </div>
 </div>
 <script>
 (function () {
@@ -294,7 +349,12 @@ export function renderReviewShell(hash: string): string {
   var statusEl = document.getElementById('status');
   var historyPanel = document.getElementById('history-panel');
   var historyLabel = document.getElementById('history-label');
+  var endModalOverlay = document.getElementById('end-modal-overlay');
+  var endModalCancel = document.getElementById('end-modal-cancel');
+  var endModalConfirm = document.getElementById('end-modal-confirm');
   var picking = false;
+  var pickingHintTimer;
+  var pickingHintFadeTimer;
   var items = [];
   var lastScrollY = 0;
   var ended = false;
@@ -362,7 +422,7 @@ export function renderReviewShell(hash: string): string {
     }
     // Only touch the disabled state here — the "sending" in-flight state is driven separately
     // by the send button's own click handler and the sent/error responses below.
-    if (!sendBtn.classList.contains('sending')) sendBtn.disabled = items.length === 0;
+    if (!sendBtn.classList.contains('sending')) updateSendButtonEnabled();
     // Issue #38: keep the history label's queued count in sync with every queue change too, not
     // just with the sent-history refetch — updateHistoryLabel is defined below but already
     // hoisted by the time render() is ever called (first call is render() at the bottom of this
@@ -446,12 +506,31 @@ export function renderReviewShell(hash: string): string {
     iframe.contentWindow.postMessage(message, window.location.origin);
   }
 
+  // Issue #61: the hint banner only needs to teach the mechanism once per activation — after
+  // this long showing it in full, it fades out and hides, leaving the toggle button's own
+  // active/pressed state as the persistent "picking is still on" indicator.
+  var PICKING_HINT_VISIBLE_MS = 4000;
+  var PICKING_HINT_FADE_MS = 300;
+
   function setPicking(value) {
     picking = value;
     pickBtn.classList.toggle('active', picking);
     pickBtn.setAttribute('aria-pressed', String(picking));
-    pickLabel.textContent = picking ? 'Cancel Sidenote' : 'Sidenote';
-    pickingHint.classList.toggle('visible', picking);
+    pickLabel.textContent = picking ? 'Stop Sidenote' : 'Sidenote';
+    clearTimeout(pickingHintTimer);
+    clearTimeout(pickingHintFadeTimer);
+    pickingHint.classList.remove('fading');
+    if (!picking) {
+      pickingHint.classList.remove('visible');
+      return;
+    }
+    pickingHint.classList.add('visible');
+    pickingHintTimer = setTimeout(function () {
+      pickingHint.classList.add('fading');
+      pickingHintFadeTimer = setTimeout(function () {
+        pickingHint.classList.remove('visible');
+      }, PICKING_HINT_FADE_MS);
+    }, PICKING_HINT_VISIBLE_MS);
   }
 
   /**
@@ -472,9 +551,37 @@ export function renderReviewShell(hash: string): string {
     if (picking) postToFrame({ type: 'inkloop:toggle-element-picker' });
   }
 
+  /**
+   * Issue #59: a themed in-app modal replaces window.confirm() here — a native confirm() can't
+   * be styled and reads oddly out of place next to the rest of this shell (and the repo's own
+   * browser-automation guidance flags it as something to avoid relying on where avoidable).
+   */
+  function showEndModal() {
+    endModalOverlay.classList.add('visible');
+    endModalConfirm.focus();
+  }
+
+  function hideEndModal() {
+    endModalOverlay.classList.remove('visible');
+  }
+
   endBtn.addEventListener('click', function () {
     if (ended) return;
-    if (!window.confirm('End this review session? A later inkloop <file> will need --reopen to resume it.')) return;
+    showEndModal();
+  });
+
+  endModalCancel.addEventListener('click', hideEndModal);
+
+  endModalOverlay.addEventListener('click', function (event) {
+    if (event.target === endModalOverlay) hideEndModal();
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && endModalOverlay.classList.contains('visible')) hideEndModal();
+  });
+
+  endModalConfirm.addEventListener('click', function () {
+    hideEndModal();
     endBtn.disabled = true;
     fetch('/session/' + SESSION_HASH + '/end', { method: 'POST' })
       .then(function (res) {
@@ -495,19 +602,17 @@ export function renderReviewShell(hash: string): string {
     postToFrame({ type: 'inkloop:toggle-element-picker' });
   });
 
-  function submitNote() {
-    var text = composer.value.trim();
-    if (!text) return;
-    postToFrame({ type: 'inkloop:add-comment', comment: text });
-    composer.value = '';
+  /**
+   * Issue #60: Send is the only way anything leaves the composer now — typing in the box alone
+   * (with nothing queued yet) is enough to enable it, same as having queued pills already does.
+   * Enter no longer queues a separate item (dropped entirely, below); a plain <textarea>'s default
+   * behavior — inserting a newline — applies with no special-casing.
+   */
+  function updateSendButtonEnabled() {
+    sendBtn.disabled = items.length === 0 && composer.value.trim().length === 0;
   }
 
-  composer.addEventListener('keydown', function (event) {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      submitNote();
-    }
-  });
+  composer.addEventListener('input', updateSendButtonEnabled);
 
   thread.addEventListener('click', function (event) {
     var target = event.target;
@@ -518,6 +623,15 @@ export function renderReviewShell(hash: string): string {
   });
 
   sendBtn.addEventListener('click', function () {
+    // Issue #60: fold the composer's current text in as an additional note in the same batch,
+    // rather than silently dropping it — 'inkloop:add-comment' queues it inside the SDK before
+    // 'inkloop:send' reads the queue, and postMessage delivery order is FIFO, so it's guaranteed
+    // to land in the same send.
+    var noteText = composer.value.trim();
+    if (noteText) {
+      postToFrame({ type: 'inkloop:add-comment', comment: noteText });
+      composer.value = '';
+    }
     sendBtn.disabled = true;
     sendBtn.classList.add('sending');
     sendBtn.textContent = 'Sending…';
@@ -528,7 +642,7 @@ export function renderReviewShell(hash: string): string {
   function resetSendButton() {
     sendBtn.classList.remove('sending');
     sendBtn.textContent = 'Send';
-    sendBtn.disabled = items.length === 0;
+    updateSendButtonEnabled();
   }
 
   window.addEventListener('message', function (event) {

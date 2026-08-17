@@ -52,7 +52,21 @@ void test("Send enters a distinct in-flight state and resets on sent/error (issu
 void test("shows a picking-mode hint that toggles with the element picker (issue #18)", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, /id="picking-hint"/);
-  assert.match(html, /pickingHint\.classList\.toggle\('visible', picking\)/);
+  assert.match(html, /pickingHint\.classList\.add\('visible'\)/);
+  assert.match(html, /pickingHint\.classList\.remove\('visible'\)/);
+});
+
+void test("issue #61: the picking-mode hint auto-hides after a few seconds instead of staying up the whole time", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /var PICKING_HINT_VISIBLE_MS = 4000;/);
+  assert.match(html, /var PICKING_HINT_FADE_MS = 300;/);
+  // The auto-hide timer must be cleared whenever picking is re-toggled (on or off), so a rapid
+  // toggle-off-then-on doesn't leave a stale timer hiding the banner out from under a fresh
+  // activation, or a stale fade class stuck on from a cancelled fade.
+  assert.match(html, /clearTimeout\(pickingHintTimer\)/);
+  assert.match(html, /clearTimeout\(pickingHintFadeTimer\)/);
+  assert.match(html, /pickingHint\.classList\.remove\('fading'\)/);
+  assert.match(html, /pickingHint\.classList\.add\('fading'\)/);
 });
 
 void test("picking state is driven by the SDK's own inkloop:picking message, not guessed locally (issue #18)", () => {
@@ -103,7 +117,6 @@ void test("session lifecycle (issue #9): renders an End session control, confirm
   const html = renderReviewShell(HASH);
   assert.match(html, /<button type="button" class="end-session" id="end-btn">End session<\/button>/);
   assert.match(html, /id="ended-banner"/);
-  assert.match(html, /window\.confirm\(/);
   assert.match(html, new RegExp(`fetch\\('/session/' \\+ SESSION_HASH \\+ '/end'`));
   assert.match(html, /function markEnded/);
   assert.match(html, /pickBtn\.disabled = true/);
@@ -113,6 +126,78 @@ void test("session lifecycle (issue #9): renders an End session control, confirm
   // under review.
   assert.match(html, /reloadPollingActive = false/);
   assert.match(html, /if \(!reloadPollingActive\) return;/);
+});
+
+void test("issue #59: End-session confirmation uses a themed in-app modal, not window.confirm()", () => {
+  const html = renderReviewShell(HASH);
+  // Matches an actual invocation, e.g. window.confirm('...'), not this test's or the source's own
+  // prose mentioning "window.confirm()" while explaining what it replaced.
+  assert.doesNotMatch(html, /window\.confirm\(['"]/);
+  assert.match(html, /<div class="modal-overlay" id="end-modal-overlay">/);
+  assert.match(html, /id="end-modal-cancel"/);
+  assert.match(html, /id="end-modal-confirm"/);
+  assert.match(html, /function showEndModal/);
+  assert.match(html, /function hideEndModal/);
+  // Confirming in the modal is what actually calls the /end endpoint, cancelling must not.
+  assert.match(
+    html,
+    /endModalConfirm\.addEventListener\('click', function \(\) \{[\s\S]*?fetch\('\/session\/' \+ SESSION_HASH \+ '\/end'/,
+  );
+});
+
+void test("issue #60: typing in the composer alone (nothing queued) enables Send", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /composer\.value\.trim\(\)\.length === 0/);
+  assert.match(html, /composer\.addEventListener\('input', updateSendButtonEnabled\)/);
+});
+
+void test("issue #60: Send folds the composer's current text into the same batch instead of dropping it", () => {
+  const html = renderReviewShell(HASH);
+  const sendHandlerStart = html.indexOf("sendBtn.addEventListener('click'");
+  assert.ok(sendHandlerStart >= 0);
+  const sendHandlerEnd = html.indexOf('});', sendHandlerStart);
+  const sendHandlerBody = html.slice(sendHandlerStart, sendHandlerEnd);
+  assert.match(sendHandlerBody, /inkloop:add-comment/);
+  assert.match(sendHandlerBody, /inkloop:send/);
+  // add-comment must be posted before send so the folded note lands in the same batch.
+  assert.ok(
+    sendHandlerBody.indexOf('inkloop:add-comment') < sendHandlerBody.indexOf('inkloop:send'),
+  );
+});
+
+void test("issue #60: Enter-to-queue is dropped entirely, not just re-labeled", () => {
+  const html = renderReviewShell(HASH);
+  assert.doesNotMatch(html, /submitNote/);
+  assert.doesNotMatch(html, /composer\.addEventListener\('keydown'/);
+});
+
+void test("issue #55: the picking-mode label reads as a clear call-to-action, not 'Cancel Sidenote'", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /pickLabel\.textContent = picking \? 'Stop Sidenote' : 'Sidenote';/);
+  assert.doesNotMatch(html, /Cancel Sidenote/);
+});
+
+void test("issue #57: the free-text composer's placeholder names the agent as the recipient", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /placeholder="Write a note to agent…"/);
+});
+
+void test("issue #58: the session-ended banner reads as a copyable command", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /Session ended\. Run <code>inkloop &lt;file&gt; --reopen<\/code> to resume review\./);
+});
+
+void test("uses the same mono font stack as axi.md's design system, with no webfont network load", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(
+    html,
+    /font-family: "JetBrains Mono", "Fira Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;/,
+  );
+  // No <link> to a font host and no @font-face rule — the preference is font-family only, so a
+  // reviewer without JetBrains Mono/Fira Code installed silently falls through to the original
+  // system-monospace stack rather than triggering a network fetch.
+  assert.doesNotMatch(html, /@font-face/);
+  assert.doesNotMatch(html, /fonts\.googleapis\.com|fonts\.gstatic\.com/);
 });
 
 void test("different hashes render distinct, non-colliding shells", () => {
