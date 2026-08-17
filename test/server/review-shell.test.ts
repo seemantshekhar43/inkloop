@@ -200,6 +200,46 @@ void test("uses the same mono font stack as axi.md's design system, with no webf
   assert.doesNotMatch(html, /fonts\.googleapis\.com|fonts\.gstatic\.com/);
 });
 
+void test("issue #63: Send optimistically clears the thread and paints a pending round before the network call", () => {
+  const html = renderReviewShell(HASH);
+  const sendHandlerStart = html.indexOf("sendBtn.addEventListener('click'");
+  assert.ok(sendHandlerStart >= 0);
+  const sendHandlerEnd = html.indexOf('function resetSendButton', sendHandlerStart);
+  assert.ok(sendHandlerEnd >= 0);
+  const sendHandlerBody = html.slice(sendHandlerStart, sendHandlerEnd);
+  // The optimistic clear/backup and the pending-round paint must happen before the
+  // 'inkloop:send' postMessage that actually kicks off the POST /feedback round trip.
+  assert.match(sendHandlerBody, /pendingSendItems = items;/);
+  assert.match(sendHandlerBody, /items = \[\];/);
+  assert.match(sendHandlerBody, /renderPendingRound\(itemsBeingSent\);/);
+  const clearIndex = sendHandlerBody.indexOf('items = [];');
+  const sendPostIndex = sendHandlerBody.indexOf("type: 'inkloop:send'");
+  assert.ok(clearIndex >= 0 && sendPostIndex >= 0 && clearIndex < sendPostIndex);
+});
+
+void test("issue #63: inkloop:send-error rolls back the optimistic clear and re-renders lastHistory", () => {
+  const html = renderReviewShell(HASH);
+  const errorHandlerStart = html.indexOf("data.type === 'inkloop:send-error'");
+  assert.ok(errorHandlerStart >= 0);
+  const errorHandlerEnd = html.indexOf('} else if', errorHandlerStart);
+  const errorHandlerBody = html.slice(errorHandlerStart, errorHandlerEnd);
+  assert.match(errorHandlerBody, /items = pendingSendItems;/);
+  assert.match(errorHandlerBody, /pendingSendItems = null;/);
+  assert.match(errorHandlerBody, /renderHistory\(lastHistory\);/);
+});
+
+void test("issue #63: the SDK's own queue echo during a send in flight doesn't stomp the optimistic clear", () => {
+  const html = renderReviewShell(HASH);
+  const queueHandlerStart = html.indexOf("data.type === 'inkloop:queue'");
+  assert.ok(queueHandlerStart >= 0);
+  const queueHandlerEnd = html.indexOf('} else if', queueHandlerStart);
+  const queueHandlerBody = html.slice(queueHandlerStart, queueHandlerEnd);
+  // Without this guard, the SDK's synchronous notifyQueueChanged() echo from the
+  // 'inkloop:add-comment' the Send click just posted would overwrite the optimistic `items = []`
+  // with the just-typed note before 'inkloop:sent'/'inkloop:send-error' reconciles it.
+  assert.match(queueHandlerBody, /if \(pendingSendItems === null\) \{/);
+});
+
 void test("different hashes render distinct, non-colliding shells", () => {
   const other = "b".repeat(16);
   const htmlA = renderReviewShell(HASH);

@@ -691,8 +691,14 @@ export function renderReviewShell(hash: string): string {
     if (data.type === 'inkloop:picking') {
       setPicking(Boolean(data.active));
     } else if (data.type === 'inkloop:queue') {
-      items = data.items || [];
-      render();
+      // Issue #63: while a send is in flight, pendingSendItems owns items (optimistically
+      // cleared on click). The SDK's own queue echo from the 'inkloop:add-comment' the Send
+      // click just posted arrives here before the POST /feedback resolves, so ignore it until
+      // 'inkloop:sent'/'inkloop:send-error' reconciles the optimistic state.
+      if (pendingSendItems === null) {
+        items = data.items || [];
+        render();
+      }
     } else if (data.type === 'inkloop:sent') {
       pendingSendItems = null;
       resetSendButton();
