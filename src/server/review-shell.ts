@@ -228,6 +228,38 @@ export function renderReviewShell(hash: string): string {
   .status.success { color: var(--ink-success); }
   .status.error { color: var(--ink-error); }
 
+  /* Issue #59: a themed in-app modal replacing window.confirm() for the End-session prompt —
+     the native dialog can't be styled and reads as generic browser chrome next to the rest of
+     this shell. */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; z-index: 10;
+    align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.6);
+  }
+  .modal-overlay.visible { display: flex; }
+  .modal {
+    width: min(320px, calc(100vw - var(--space-4) * 2));
+    background: var(--ink-panel); border: 1px solid var(--ink-border); border-radius: 8px;
+    padding: var(--space-4); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  }
+  .modal-title { font-weight: 700; margin-bottom: var(--space-2); }
+  .modal-body { color: var(--ink-dim); font-size: 12px; line-height: 1.5; }
+  .modal-body code {
+    background: #1a1a22; border-radius: 4px; padding: 1px 4px; color: var(--ink-text);
+    font-size: 11px;
+  }
+  .modal-actions {
+    display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-4);
+  }
+  .modal-actions button {
+    appearance: none; border-radius: 6px; padding: var(--space-2) var(--space-3);
+    font: inherit; cursor: pointer; transition: background-color 0.12s ease, border-color 0.12s ease;
+  }
+  .modal-cancel { border: 1px solid var(--ink-border); background: transparent; color: var(--ink-text); }
+  .modal-cancel:hover { border-color: var(--ink-dim); }
+  .modal-confirm { border: 1px solid var(--ink-error); background: var(--ink-error); color: var(--ink-accent-text); }
+  .modal-confirm:hover { opacity: 0.9; }
+
   /* Issue #43: below ~900px, the side panel's fixed width becomes the scarcer resource rather
      than the vertical space it reclaims — fold back into a full-width bottom dock, the layout
      the original bottom-dock design was tuned for. Pure CSS, no JS/state: the same DOM just
@@ -279,6 +311,16 @@ export function renderReviewShell(hash: string): string {
     <div class="status" id="status"></div>
   </aside>
 </div>
+<div class="modal-overlay" id="end-modal-overlay">
+  <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="end-modal-title">
+    <div class="modal-title" id="end-modal-title">End review session?</div>
+    <div class="modal-body">Ends this review session. Resume it later with <code>inkloop &lt;file&gt; --reopen</code>.</div>
+    <div class="modal-actions">
+      <button type="button" class="modal-cancel" id="end-modal-cancel">Cancel</button>
+      <button type="button" class="modal-confirm" id="end-modal-confirm">End session</button>
+    </div>
+  </div>
+</div>
 <script>
 (function () {
   var iframe = document.getElementById('artifact-frame');
@@ -294,6 +336,9 @@ export function renderReviewShell(hash: string): string {
   var statusEl = document.getElementById('status');
   var historyPanel = document.getElementById('history-panel');
   var historyLabel = document.getElementById('history-label');
+  var endModalOverlay = document.getElementById('end-modal-overlay');
+  var endModalCancel = document.getElementById('end-modal-cancel');
+  var endModalConfirm = document.getElementById('end-modal-confirm');
   var picking = false;
   var items = [];
   var lastScrollY = 0;
@@ -362,7 +407,7 @@ export function renderReviewShell(hash: string): string {
     }
     // Only touch the disabled state here — the "sending" in-flight state is driven separately
     // by the send button's own click handler and the sent/error responses below.
-    if (!sendBtn.classList.contains('sending')) sendBtn.disabled = items.length === 0;
+    if (!sendBtn.classList.contains('sending')) updateSendButtonEnabled();
     // Issue #38: keep the history label's queued count in sync with every queue change too, not
     // just with the sent-history refetch — updateHistoryLabel is defined below but already
     // hoisted by the time render() is ever called (first call is render() at the bottom of this
@@ -472,9 +517,37 @@ export function renderReviewShell(hash: string): string {
     if (picking) postToFrame({ type: 'inkloop:toggle-element-picker' });
   }
 
+  /**
+   * Issue #59: a themed in-app modal replaces window.confirm() here — a native confirm() can't
+   * be styled and reads oddly out of place next to the rest of this shell (and the repo's own
+   * browser-automation guidance flags it as something to avoid relying on where avoidable).
+   */
+  function showEndModal() {
+    endModalOverlay.classList.add('visible');
+    endModalConfirm.focus();
+  }
+
+  function hideEndModal() {
+    endModalOverlay.classList.remove('visible');
+  }
+
   endBtn.addEventListener('click', function () {
     if (ended) return;
-    if (!window.confirm('End this review session? A later inkloop <file> will need --reopen to resume it.')) return;
+    showEndModal();
+  });
+
+  endModalCancel.addEventListener('click', hideEndModal);
+
+  endModalOverlay.addEventListener('click', function (event) {
+    if (event.target === endModalOverlay) hideEndModal();
+  });
+
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape' && endModalOverlay.classList.contains('visible')) hideEndModal();
+  });
+
+  endModalConfirm.addEventListener('click', function () {
+    hideEndModal();
     endBtn.disabled = true;
     fetch('/session/' + SESSION_HASH + '/end', { method: 'POST' })
       .then(function (res) {
@@ -495,19 +568,17 @@ export function renderReviewShell(hash: string): string {
     postToFrame({ type: 'inkloop:toggle-element-picker' });
   });
 
-  function submitNote() {
-    var text = composer.value.trim();
-    if (!text) return;
-    postToFrame({ type: 'inkloop:add-comment', comment: text });
-    composer.value = '';
+  /**
+   * Issue #60: Send is the only way anything leaves the composer now — typing in the box alone
+   * (with nothing queued yet) is enough to enable it, same as having queued pills already does.
+   * Enter no longer queues a separate item (dropped entirely, below); a plain <textarea>'s default
+   * behavior — inserting a newline — applies with no special-casing.
+   */
+  function updateSendButtonEnabled() {
+    sendBtn.disabled = items.length === 0 && composer.value.trim().length === 0;
   }
 
-  composer.addEventListener('keydown', function (event) {
-    if (event.key === 'Enter' && !event.shiftKey) {
-      event.preventDefault();
-      submitNote();
-    }
-  });
+  composer.addEventListener('input', updateSendButtonEnabled);
 
   thread.addEventListener('click', function (event) {
     var target = event.target;
@@ -518,6 +589,15 @@ export function renderReviewShell(hash: string): string {
   });
 
   sendBtn.addEventListener('click', function () {
+    // Issue #60: fold the composer's current text in as an additional note in the same batch,
+    // rather than silently dropping it — 'inkloop:add-comment' queues it inside the SDK before
+    // 'inkloop:send' reads the queue, and postMessage delivery order is FIFO, so it's guaranteed
+    // to land in the same send.
+    var noteText = composer.value.trim();
+    if (noteText) {
+      postToFrame({ type: 'inkloop:add-comment', comment: noteText });
+      composer.value = '';
+    }
     sendBtn.disabled = true;
     sendBtn.classList.add('sending');
     sendBtn.textContent = 'Sending…';
@@ -528,7 +608,7 @@ export function renderReviewShell(hash: string): string {
   function resetSendButton() {
     sendBtn.classList.remove('sending');
     sendBtn.textContent = 'Send';
-    sendBtn.disabled = items.length === 0;
+    updateSendButtonEnabled();
   }
 
   window.addEventListener('message', function (event) {

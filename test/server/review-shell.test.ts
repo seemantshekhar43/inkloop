@@ -103,7 +103,6 @@ void test("session lifecycle (issue #9): renders an End session control, confirm
   const html = renderReviewShell(HASH);
   assert.match(html, /<button type="button" class="end-session" id="end-btn">End session<\/button>/);
   assert.match(html, /id="ended-banner"/);
-  assert.match(html, /window\.confirm\(/);
   assert.match(html, new RegExp(`fetch\\('/session/' \\+ SESSION_HASH \\+ '/end'`));
   assert.match(html, /function markEnded/);
   assert.match(html, /pickBtn\.disabled = true/);
@@ -113,6 +112,49 @@ void test("session lifecycle (issue #9): renders an End session control, confirm
   // under review.
   assert.match(html, /reloadPollingActive = false/);
   assert.match(html, /if \(!reloadPollingActive\) return;/);
+});
+
+void test("issue #59: End-session confirmation uses a themed in-app modal, not window.confirm()", () => {
+  const html = renderReviewShell(HASH);
+  // Matches an actual invocation, e.g. window.confirm('...'), not this test's or the source's own
+  // prose mentioning "window.confirm()" while explaining what it replaced.
+  assert.doesNotMatch(html, /window\.confirm\(['"]/);
+  assert.match(html, /<div class="modal-overlay" id="end-modal-overlay">/);
+  assert.match(html, /id="end-modal-cancel"/);
+  assert.match(html, /id="end-modal-confirm"/);
+  assert.match(html, /function showEndModal/);
+  assert.match(html, /function hideEndModal/);
+  // Confirming in the modal is what actually calls the /end endpoint, cancelling must not.
+  assert.match(
+    html,
+    /endModalConfirm\.addEventListener\('click', function \(\) \{[\s\S]*?fetch\('\/session\/' \+ SESSION_HASH \+ '\/end'/,
+  );
+});
+
+void test("issue #60: typing in the composer alone (nothing queued) enables Send", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /composer\.value\.trim\(\)\.length === 0/);
+  assert.match(html, /composer\.addEventListener\('input', updateSendButtonEnabled\)/);
+});
+
+void test("issue #60: Send folds the composer's current text into the same batch instead of dropping it", () => {
+  const html = renderReviewShell(HASH);
+  const sendHandlerStart = html.indexOf("sendBtn.addEventListener('click'");
+  assert.ok(sendHandlerStart >= 0);
+  const sendHandlerEnd = html.indexOf('});', sendHandlerStart);
+  const sendHandlerBody = html.slice(sendHandlerStart, sendHandlerEnd);
+  assert.match(sendHandlerBody, /inkloop:add-comment/);
+  assert.match(sendHandlerBody, /inkloop:send/);
+  // add-comment must be posted before send so the folded note lands in the same batch.
+  assert.ok(
+    sendHandlerBody.indexOf('inkloop:add-comment') < sendHandlerBody.indexOf('inkloop:send'),
+  );
+});
+
+void test("issue #60: Enter-to-queue is dropped entirely, not just re-labeled", () => {
+  const html = renderReviewShell(HASH);
+  assert.doesNotMatch(html, /submitNote/);
+  assert.doesNotMatch(html, /composer\.addEventListener\('keydown'/);
 });
 
 void test("issue #55: the picking-mode label reads as a clear call-to-action, not 'Cancel Sidenote'", () => {
