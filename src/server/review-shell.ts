@@ -64,7 +64,12 @@ export function renderReviewShell(hash: string): string {
   * { box-sizing: border-box; }
   html, body {
     margin: 0; height: 100%;
-    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    /* Matches axi.md's own mono stack (kunchenguid-design-system's --font-mono) so the two share
+       a font identity where a reviewer is likely to have both open — JetBrains Mono/Fira Code
+       first if installed locally, falling through to the same system-monospace stack as before
+       otherwise. No webfont load: inkloop stays local-first/no-CDN (see README), so this is a
+       font-family preference only, never a network fetch. */
+    font-family: "JetBrains Mono", "Fira Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     font-size: 13px;
     background: var(--ink-bg); color: var(--ink-text);
   }

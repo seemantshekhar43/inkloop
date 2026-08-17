@@ -187,6 +187,19 @@ void test("issue #58: the session-ended banner reads as a copyable command", () 
   assert.match(html, /Session ended\. Run <code>inkloop &lt;file&gt; --reopen<\/code> to resume review\./);
 });
 
+void test("uses the same mono font stack as axi.md's design system, with no webfont network load", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(
+    html,
+    /font-family: "JetBrains Mono", "Fira Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;/,
+  );
+  // No <link> to a font host and no @font-face rule — the preference is font-family only, so a
+  // reviewer without JetBrains Mono/Fira Code installed silently falls through to the original
+  // system-monospace stack rather than triggering a network fetch.
+  assert.doesNotMatch(html, /@font-face/);
+  assert.doesNotMatch(html, /fonts\.googleapis\.com|fonts\.gstatic\.com/);
+});
+
 void test("different hashes render distinct, non-colliding shells", () => {
   const other = "b".repeat(16);
   const htmlA = renderReviewShell(HASH);
