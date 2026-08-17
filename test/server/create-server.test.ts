@@ -700,6 +700,47 @@ void test("reload route: flags otherTabActive once a second tab's ?tab= id is se
   }
 });
 
+void test("tab-leave route: releases a tab's presence immediately instead of waiting for it to go stale (issue #65)", async () => {
+  const stateRoot = await mkdtemp(path.join(os.tmpdir(), "inkloop-tab-leave-test-"));
+  const artifactDir = await mkdtemp(path.join(os.tmpdir(), "inkloop-tab-leave-artifact-"));
+  const originalStateDir = process.env["INKLOOP_STATE_DIR"];
+  process.env["INKLOOP_STATE_DIR"] = stateRoot;
+
+  const artifactPath = path.join(artifactDir, "artifact.html");
+  await writeFile(artifactPath, "<p>v1</p>", "utf8");
+
+  const instance = createInkloopServer(baseConfig({ pollTimeoutMs: 150 }));
+  const port = await instance.listening;
+  try {
+    await openOrResumeSession(artifactPath);
+    const hash = hashArtifactPath(artifactPath);
+
+    await request(port, `/session/${hash}/reload?since=0&tab=tab-a`, { host: "127.0.0.1" });
+    const beforeLeave = await request(port, `/session/${hash}/reload?since=0&tab=tab-b`, {
+      host: "127.0.0.1",
+    });
+    assert.equal((beforeLeave.body as { otherTabActive: boolean }).otherTabActive, true);
+
+    const leave = await postJson(port, `/session/${hash}/tab-leave`, { tabId: "tab-a" }, { host: "127.0.0.1" });
+    assert.equal(leave.status, 204);
+
+    const afterLeave = await request(port, `/session/${hash}/reload?since=0&tab=tab-b`, {
+      host: "127.0.0.1",
+    });
+    assert.equal((afterLeave.body as { otherTabActive: boolean }).otherTabActive, false);
+
+    // A malformed/empty beacon body is a harmless no-op, not a 4xx/5xx — the page is unloading,
+    // nothing could react to an error response anyway.
+    const malformed = await postJson(port, `/session/${hash}/tab-leave`, { tabId: 123 }, { host: "127.0.0.1" });
+    assert.equal(malformed.status, 204);
+  } finally {
+    await instance.close();
+    process.env["INKLOOP_STATE_DIR"] = originalStateDir;
+    await rm(stateRoot, { recursive: true, force: true });
+    await rm(artifactDir, { recursive: true, force: true });
+  }
+});
+
 void test("end route: ends the session as user-ended and returns next_step guidance, unknown session 404s", async () => {
   const stateRoot = await mkdtemp(path.join(os.tmpdir(), "inkloop-end-route-test-"));
   const artifactDir = await mkdtemp(path.join(os.tmpdir(), "inkloop-end-route-artifact-"));

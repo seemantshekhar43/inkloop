@@ -155,6 +155,9 @@ export function renderReviewShell(hash: string): string {
   }
   .history-empty { color: var(--ink-dim); font-size: 12px; }
   .history-round { display: flex; flex-direction: column; gap: var(--space-2); }
+  /* Issue #63: the optimistic round painted in immediately on Send, before the server has
+     confirmed it — same markup as a real round, just visibly provisional until it does. */
+  .history-round.pending { opacity: 0.6; }
   .history-round-label {
     font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-dim);
   }
@@ -356,6 +359,9 @@ export function renderReviewShell(hash: string): string {
   var pickingHintTimer;
   var pickingHintFadeTimer;
   var items = [];
+  // Issue #63: backup of the items a send is in flight for, so an 'inkloop:send-error' can put
+  // them back after the optimistic clear below. Null whenever no send is in flight.
+  var pendingSendItems = null;
   var lastScrollY = 0;
   var ended = false;
   var reloadPollingActive = true;
@@ -455,6 +461,33 @@ export function renderReviewShell(hash: string): string {
     historyLabel.textContent = label;
   }
 
+  // Factored out of renderHistory so the optimistic-send path below (issue #63) can render the
+  // exact same markup for a round that hasn't round-tripped to the server yet.
+  function roundHtml(round, pending) {
+    var itemsHtml = round.items.map(function (item) {
+      var quote = item.target && item.target.quote
+        ? '“' + escapeHtml(String(item.target.quote).slice(0, 60)) + '” — '
+        : '';
+      // Issue #10: the SDK flags an item as drifted when its anchored text no longer matches
+      // the live artifact — surfaced here so a human sees why an agent might ask to re-anchor
+      // instead of resolving it, not just in the raw poll payload the agent itself receives.
+      var driftNote = item.drifted
+        ? '<span class="history-item-drift-note">⚠ Anchor text changed since this was sent</span>'
+        : '';
+      return '<div class="history-item' + (item.drifted ? ' drifted' : '') + '">'
+        + '<span class="history-item-target">' + targetLabel(item.target) + '</span>'
+        + '<span class="history-item-comment">' + quote + escapeHtml(item.comment) + '</span>'
+        + driftNote + '</div>';
+    }).join('');
+    var replyHtml = round.reply
+      ? '<div class="history-reply"><div class="history-reply-label">Agent revised</div>'
+        + '<div class="history-reply-message">' + escapeHtml(round.reply.message) + '</div></div>'
+      : '';
+    return '<div class="history-round' + (pending ? ' pending' : '') + '">'
+      + '<div class="history-round-label">Round ' + round.round + '</div>'
+      + '<div class="history-items">' + itemsHtml + '</div>' + replyHtml + '</div>';
+  }
+
   function renderHistory(history) {
     lastHistory = history || lastHistory;
     var rounds = lastHistory.rounds || [];
@@ -465,30 +498,24 @@ export function renderReviewShell(hash: string): string {
       return;
     }
 
-    historyPanel.innerHTML = rounds.map(function (round) {
-      var itemsHtml = round.items.map(function (item) {
-        var quote = item.target && item.target.quote
-          ? '“' + escapeHtml(String(item.target.quote).slice(0, 60)) + '” — '
-          : '';
-        // Issue #10: the SDK flags an item as drifted when its anchored text no longer matches
-        // the live artifact — surfaced here so a human sees why an agent might ask to re-anchor
-        // instead of resolving it, not just in the raw poll payload the agent itself receives.
-        var driftNote = item.drifted
-          ? '<span class="history-item-drift-note">⚠ Anchor text changed since this was sent</span>'
-          : '';
-        return '<div class="history-item' + (item.drifted ? ' drifted' : '') + '">'
-          + '<span class="history-item-target">' + targetLabel(item.target) + '</span>'
-          + '<span class="history-item-comment">' + quote + escapeHtml(item.comment) + '</span>'
-          + driftNote + '</div>';
-      }).join('');
-      var replyHtml = round.reply
-        ? '<div class="history-reply"><div class="history-reply-label">Agent revised</div>'
-          + '<div class="history-reply-message">' + escapeHtml(round.reply.message) + '</div></div>'
-        : '';
-      return '<div class="history-round">'
-        + '<div class="history-round-label">Round ' + round.round + '</div>'
-        + '<div class="history-items">' + itemsHtml + '</div>' + replyHtml + '</div>';
-    }).join('');
+    historyPanel.innerHTML = rounds.map(function (round) { return roundHtml(round, false); }).join('');
+  }
+
+  /**
+   * Issue #63: paints the round being sent into the history panel the instant Send is clicked,
+   * instead of leaving the panel showing its pre-send state until the POST /feedback + GET
+   * /history round trip resolves (visibly ~1-2s on top of the composer already having cleared).
+   * The follow-up fetchHistory() call this same click triggers overwrites the whole panel with
+   * the server's authoritative rounds shortly after, which naturally replaces this pending entry
+   * with the real one — same content, so the swap is invisible. On a send error the pending round
+   * is dropped by re-rendering lastHistory as-is (see the 'inkloop:send-error' handler below).
+   */
+  function renderPendingRound(itemsForRound) {
+    if (itemsForRound.length === 0) return;
+    var roundNum = (lastHistory.rounds || []).length + 1;
+    var html = roundHtml({ round: roundNum, items: itemsForRound, reply: null }, true);
+    if (historyPanel.querySelector('.history-empty')) historyPanel.innerHTML = '';
+    historyPanel.insertAdjacentHTML('beforeend', html);
   }
 
   function fetchHistory() {
@@ -628,10 +655,21 @@ export function renderReviewShell(hash: string): string {
     // 'inkloop:send' reads the queue, and postMessage delivery order is FIFO, so it's guaranteed
     // to land in the same send.
     var noteText = composer.value.trim();
+    var itemsBeingSent = items.slice();
     if (noteText) {
       postToFrame({ type: 'inkloop:add-comment', comment: noteText });
+      itemsBeingSent.push({ target: { kind: 'general' }, comment: noteText });
       composer.value = '';
     }
+
+    // Issue #63: optimistic UI — move the queued draft into the history panel and clear the
+    // thread right away, instead of leaving both showing their pre-send state until the SDK's
+    // POST /feedback resolves. pendingSendItems keeps a backup to restore if the send fails.
+    pendingSendItems = items;
+    items = [];
+    render();
+    renderPendingRound(itemsBeingSent);
+
     sendBtn.disabled = true;
     sendBtn.classList.add('sending');
     sendBtn.textContent = 'Sending…';
@@ -656,10 +694,20 @@ export function renderReviewShell(hash: string): string {
       items = data.items || [];
       render();
     } else if (data.type === 'inkloop:sent') {
+      pendingSendItems = null;
       resetSendButton();
       setStatus('Sent.', 'success');
       fetchHistory();
     } else if (data.type === 'inkloop:send-error') {
+      // Roll back the optimistic update above: put the unsent items back in the thread and drop
+      // the pending round from the history panel (a plain re-render of lastHistory, which never
+      // included it).
+      if (pendingSendItems) {
+        items = pendingSendItems;
+        pendingSendItems = null;
+        render();
+      }
+      renderHistory(lastHistory);
       resetSendButton();
       setStatus('Failed to send: ' + data.message, 'error');
     } else if (data.type === 'inkloop:scroll') {
@@ -707,6 +755,19 @@ export function renderReviewShell(hash: string): string {
       });
   }
   pollReload(0);
+
+  // Issue #65: tell the server this tab is gone the moment it actually is, instead of leaving
+  // its presence to age out of the reload-poll heartbeat (up to 3x the poll timeout) — without
+  // this, closing a tab could still make the next tab opened on this session see a stale "open
+  // in another tab" banner. 'pagehide' fires on a real close, a navigation away, and a reload,
+  // unlike 'beforeunload' which doesn't reliably fire on mobile/backgrounding; sendBeacon is the
+  // right tool here since the page is unloading and nothing could react to a normal fetch's
+  // response anyway.
+  window.addEventListener('pagehide', function () {
+    if (!navigator.sendBeacon) return;
+    var payload = new Blob([JSON.stringify({ tabId: TAB_ID })], { type: 'application/json' });
+    navigator.sendBeacon('/session/' + SESSION_HASH + '/tab-leave', payload);
+  });
 
   render();
   fetchHistory();

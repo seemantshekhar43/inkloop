@@ -20,6 +20,16 @@ export interface TabPresenceTracker {
    * see createTabPresenceTracker's staleAfterMs contract.
    */
   record(hash: string, tabId: string, now?: number): boolean;
+
+  /**
+   * Drops `tabId` immediately rather than waiting up to `staleAfterMs` for it to age out.
+   * Called from a `pagehide` beacon (issue #65) so closing or navigating away from a tab clears
+   * its presence right away — without this, a tab a reviewer just closed could still make the
+   * "open in another tab" banner show up for up to `staleAfterMs` in whatever tab they open next,
+   * a false positive by the time anyone sees it. Best-effort like the beacon that calls it: a
+   * missed release just falls back to the existing staleness pruning in `record`.
+   */
+  release(hash: string, tabId: string): void;
 }
 
 export function createTabPresenceTracker(staleAfterMs: number): TabPresenceTracker {
@@ -43,6 +53,13 @@ export function createTabPresenceTracker(staleAfterMs: number): TabPresenceTrack
         if (id !== tabId) return true;
       }
       return false;
+    },
+
+    release(hash, tabId) {
+      const tabs = byHash.get(hash);
+      if (!tabs) return;
+      tabs.delete(tabId);
+      if (tabs.size === 0) byHash.delete(hash);
     },
   };
 }
