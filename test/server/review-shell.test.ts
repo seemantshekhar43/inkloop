@@ -115,6 +115,22 @@ void test("session lifecycle (issue #9): renders an End session control, confirm
   assert.match(html, /if \(!reloadPollingActive\) return;/);
 });
 
+void test("issue #55: the picking-mode label reads as a clear call-to-action, not 'Cancel Sidenote'", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /pickLabel\.textContent = picking \? 'Stop Sidenote' : 'Sidenote';/);
+  assert.doesNotMatch(html, /Cancel Sidenote/);
+});
+
+void test("issue #57: the free-text composer's placeholder names the agent as the recipient", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /placeholder="Write a note to agent… \(not tied to a specific element\)"/);
+});
+
+void test("issue #58: the session-ended banner reads as a copyable command", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /Session ended\. Run <code>inkloop &lt;file&gt; --reopen<\/code> to resume review\./);
+});
+
 void test("different hashes render distinct, non-colliding shells", () => {
   const other = "b".repeat(16);
   const htmlA = renderReviewShell(HASH);

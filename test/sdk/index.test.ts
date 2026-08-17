@@ -53,3 +53,26 @@ void test("issue #41: the composer re-clamps its own position so growth can't pu
   assert.match(sdkSource, /textarea\.style\.height = `\$\{textarea\.scrollHeight\}px`/);
   assert.match(sdkSource, /window\.innerHeight - composer\.getBoundingClientRect\(\)\.height/);
 });
+
+void test("issue #54: picking mode is not turned off when an element is picked", () => {
+  // The element-picker click handler used to call setPickingElement(false) unconditionally as
+  // soon as any element was clicked, forcing a re-toggle before every additional pick. It must
+  // no longer do so — only the explicit toggle message handler should call setPickingElement.
+  const guardPattern = /if \(!pickingElement \|\| pendingTarget\)\s*\n?\s*return;/;
+  const clickHandlerStart = sdkSource.search(guardPattern);
+  assert.ok(clickHandlerStart >= 0, "expected the picker click handler's combined guard");
+  const clickHandlerEnd = sdkSource.indexOf("showComposerAt(", clickHandlerStart);
+  const clickHandlerBody = sdkSource.slice(clickHandlerStart, clickHandlerEnd);
+  assert.doesNotMatch(clickHandlerBody, /setPickingElement\(false\)/);
+});
+
+void test("issue #54: hover-highlight and re-picking are suspended while the composer is open", () => {
+  // Both the mousemove hover-highlight and the click-to-pick handler must skip while a prior
+  // pick's composer is still open (pendingTarget set), otherwise picking mode staying on would
+  // let the mouse drag the pinned highlight around or let a stray click re-pick underneath the
+  // open composer.
+  const guardOccurrences = sdkSource.match(
+    /if \(!pickingElement \|\| pendingTarget\)\s*\n?\s*return;/g,
+  );
+  assert.ok(guardOccurrences && guardOccurrences.length >= 2);
+});

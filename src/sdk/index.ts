@@ -238,11 +238,12 @@
 
   /**
    * Toggles picking mode and its visible side effects: a crosshair cursor on the artifact so
-   * it's obvious a click will select rather than click through, and — since picking mode also
-   * turns itself off the moment an element is picked, not just on an explicit toggle — a
-   * postMessage telling the review shell the real current state. The shell used to guess this
-   * optimistically from its own toggle button clicks alone, which drifted out of sync as soon as
-   * a pick completed (issue #18).
+   * it's obvious a click will select rather than click through, and a postMessage telling the
+   * review shell the real current state. The shell used to guess this optimistically from its
+   * own toggle button clicks alone, which drifted out of sync as soon as a pick completed
+   * (issue #18). Picking mode itself now stays on across multiple picks (issue #54) — this only
+   * flips off on an explicit re-toggle or one of the other call sites that already turn it off
+   * today (markEnded, live reload).
    */
   function setPickingElement(value: boolean): void {
     pickingElement = value;
@@ -258,7 +259,10 @@
   document.addEventListener(
     "mousemove",
     (event) => {
-      if (!pickingElement) return;
+      // Also gate on pendingTarget: while the composer is open the highlight is pinned to the
+      // just-picked element/range (issue #27) and must stay put, not get dragged around by the
+      // mouse moving over the rest of the artifact behind the composer.
+      if (!pickingElement || pendingTarget) return;
       const target = event.target;
       if (!(target instanceof Element) || isSdkNode(target)) {
         highlight.classList.add("inkloop-hidden");
@@ -290,13 +294,14 @@
   document.addEventListener(
     "click",
     (event) => {
-      if (!pickingElement) return;
+      // Issue #54: picking mode stays on across picks, so also skip while the composer for a
+      // prior pick is still open (pendingTarget set) rather than re-picking out from under it.
+      if (!pickingElement || pendingTarget) return;
       const target = event.target;
       if (!(target instanceof Element) || isSdkNode(target)) return;
       event.preventDefault();
       event.stopPropagation();
       const rect = target.getBoundingClientRect();
-      setPickingElement(false);
       showComposerAt(
         event.clientX,
         event.clientY,
