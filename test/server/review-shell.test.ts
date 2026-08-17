@@ -52,7 +52,21 @@ void test("Send enters a distinct in-flight state and resets on sent/error (issu
 void test("shows a picking-mode hint that toggles with the element picker (issue #18)", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, /id="picking-hint"/);
-  assert.match(html, /pickingHint\.classList\.toggle\('visible', picking\)/);
+  assert.match(html, /pickingHint\.classList\.add\('visible'\)/);
+  assert.match(html, /pickingHint\.classList\.remove\('visible'\)/);
+});
+
+void test("issue #61: the picking-mode hint auto-hides after a few seconds instead of staying up the whole time", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /var PICKING_HINT_VISIBLE_MS = 4000;/);
+  assert.match(html, /var PICKING_HINT_FADE_MS = 300;/);
+  // The auto-hide timer must be cleared whenever picking is re-toggled (on or off), so a rapid
+  // toggle-off-then-on doesn't leave a stale timer hiding the banner out from under a fresh
+  // activation, or a stale fade class stuck on from a cancelled fade.
+  assert.match(html, /clearTimeout\(pickingHintTimer\)/);
+  assert.match(html, /clearTimeout\(pickingHintFadeTimer\)/);
+  assert.match(html, /pickingHint\.classList\.remove\('fading'\)/);
+  assert.match(html, /pickingHint\.classList\.add\('fading'\)/);
 });
 
 void test("picking state is driven by the SDK's own inkloop:picking message, not guessed locally (issue #18)", () => {
@@ -165,7 +179,7 @@ void test("issue #55: the picking-mode label reads as a clear call-to-action, no
 
 void test("issue #57: the free-text composer's placeholder names the agent as the recipient", () => {
   const html = renderReviewShell(HASH);
-  assert.match(html, /placeholder="Write a note to agent… \(not tied to a specific element\)"/);
+  assert.match(html, /placeholder="Write a note to agent…"/);
 });
 
 void test("issue #58: the session-ended banner reads as a copyable command", () => {

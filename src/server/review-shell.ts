@@ -117,12 +117,20 @@ export function renderReviewShell(hash: string): string {
     background: var(--ink-agent-soft); border-bottom: 1px solid var(--ink-border);
   }
   .tab-banner.visible { display: flex; }
+  /* Issue #61: shown as a one-time reminder when Sidenote turns on, not for as long as picking
+     mode stays active — the toggle button itself (active/pressed state, dot lit, "Stop Sidenote"
+     label) is the persistent indicator, so the banner only needs to teach the mechanism once per
+     activation, then get out of the way. .fading drives the opacity transition below the
+     JS-controlled auto-hide timer, so the banner's departure reads as an intentional dismissal
+     rather than a jump-cut. */
   .picking-hint {
     flex: 0 0 auto; display: none; align-items: center;
     padding: var(--space-2) var(--space-4); font-size: 12px; color: var(--ink-accent-text);
     background: var(--ink-accent); border-bottom: 1px solid var(--ink-border);
+    opacity: 1; transition: opacity 0.3s ease;
   }
   .picking-hint.visible { display: flex; }
+  .picking-hint.fading { opacity: 0; }
   .content { flex: 1 1 auto; display: flex; flex-direction: row; min-height: 0; }
   main { flex: 1 1 auto; position: relative; min-height: 0; }
   iframe { border: 0; width: 100%; height: 100%; display: block; background: #fff; }
@@ -305,7 +313,7 @@ export function renderReviewShell(hash: string): string {
       <div class="thread-empty">No annotations queued yet — select an element, select text, or write a note below.</div>
     </div>
     <div class="composer-row">
-      <textarea id="composer" placeholder="Write a note to agent… (not tied to a specific element)"></textarea>
+      <textarea id="composer" placeholder="Write a note to agent…"></textarea>
       <button type="button" id="send-btn" disabled>Send</button>
     </div>
     <div class="status" id="status"></div>
@@ -340,6 +348,8 @@ export function renderReviewShell(hash: string): string {
   var endModalCancel = document.getElementById('end-modal-cancel');
   var endModalConfirm = document.getElementById('end-modal-confirm');
   var picking = false;
+  var pickingHintTimer;
+  var pickingHintFadeTimer;
   var items = [];
   var lastScrollY = 0;
   var ended = false;
@@ -491,12 +501,31 @@ export function renderReviewShell(hash: string): string {
     iframe.contentWindow.postMessage(message, window.location.origin);
   }
 
+  // Issue #61: the hint banner only needs to teach the mechanism once per activation — after
+  // this long showing it in full, it fades out and hides, leaving the toggle button's own
+  // active/pressed state as the persistent "picking is still on" indicator.
+  var PICKING_HINT_VISIBLE_MS = 4000;
+  var PICKING_HINT_FADE_MS = 300;
+
   function setPicking(value) {
     picking = value;
     pickBtn.classList.toggle('active', picking);
     pickBtn.setAttribute('aria-pressed', String(picking));
     pickLabel.textContent = picking ? 'Stop Sidenote' : 'Sidenote';
-    pickingHint.classList.toggle('visible', picking);
+    clearTimeout(pickingHintTimer);
+    clearTimeout(pickingHintFadeTimer);
+    pickingHint.classList.remove('fading');
+    if (!picking) {
+      pickingHint.classList.remove('visible');
+      return;
+    }
+    pickingHint.classList.add('visible');
+    pickingHintTimer = setTimeout(function () {
+      pickingHint.classList.add('fading');
+      pickingHintFadeTimer = setTimeout(function () {
+        pickingHint.classList.remove('visible');
+      }, PICKING_HINT_FADE_MS);
+    }, PICKING_HINT_VISIBLE_MS);
   }
 
   /**
