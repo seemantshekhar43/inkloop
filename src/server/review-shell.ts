@@ -377,6 +377,20 @@ export function renderReviewShell(hash: string): string {
   @media (max-width: 480px) {
     aside#dock { max-height: 55vh; }
   }
+
+  /* Issue #42 follow-up: the premium pass above added several entrance/press animations (banner
+     slide-in, pill fade-in, modal scale-in, button press-scale) and transitions (hover lift, focus
+     glow) — none of them convey information on their own, so a reviewer with vestibular motion
+     sensitivity or who has set the OS-level "reduce motion" preference should get the same end
+     states instantly instead of riding out every animation and transition. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 </style>
 </head>
 <body>
