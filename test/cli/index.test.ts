@@ -88,6 +88,22 @@ void test("end with no session for the file exits 1 (routing is covered end to e
   assert.match(text, /no session found/);
 });
 
+void test("stop is routed to the stop command (routing is covered end to end in commands/stop.test.ts)", async () => {
+  // A scratch port, not the real default — this only proves routing happens (the stop command's
+  // own success/failure paths are unit-tested separately in commands/stop.test.ts), not that a
+  // real server actually stops. Using a fixed port instead of the default avoids any flakiness
+  // from a real inkloop server happening to already be up on this machine.
+  const originalPort = process.env["INKLOOP_PORT"];
+  process.env["INKLOOP_PORT"] = "44499";
+  try {
+    const { code, text } = await captureWrite(process.stdout, () => run(["stop"]));
+    assert.equal(code, 0);
+    assert.match(text, /no server running/);
+  } finally {
+    process.env["INKLOOP_PORT"] = originalPort;
+  }
+});
+
 void test("a bare non-flag argument is routed to the open command", async () => {
   // No such file exists — proves routing happens (open command's own errors are unit-tested
   // separately in commands/open.test.ts), not that opening succeeds.

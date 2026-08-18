@@ -34,6 +34,7 @@ const DRIFT_ROUTE = /^\/session\/([0-9a-f]{16})\/drift\/?$/;
 const RELOAD_ROUTE = /^\/session\/([0-9a-f]{16})\/reload\/?$/;
 const TAB_LEAVE_ROUTE = /^\/session\/([0-9a-f]{16})\/tab-leave\/?$/;
 const END_ROUTE = /^\/session\/([0-9a-f]{16})\/end\/?$/;
+const SHUTDOWN_ROUTE = "/shutdown";
 
 /** How often the poll route re-checks for newly-queued feedback while it waits. */
 const POLL_CHECK_INTERVAL_MS = 300;
@@ -427,12 +428,24 @@ async function handleEndRoute(res: http.ServerResponse, hash: string): Promise<v
   });
 }
 
+/**
+ * Backs `inkloop stop` (issue #67 follow-up): the CLI has no PID tracking for the detached
+ * background server (see ensure-running.ts's health-check-only discovery), so shutting it down
+ * goes through HTTP like every other route rather than a signal sent to a remembered pid. Replies
+ * before closing — closing synchronously here would race the response write on the same socket.
+ */
+function handleShutdownRoute(res: http.ServerResponse, triggerShutdown: () => void): void {
+  sendJson(res, 200, { status: "stopping" });
+  setImmediate(triggerShutdown);
+}
+
 async function handleRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   config: ServerConfig,
   watchers: Map<string, ArtifactWatcher>,
   tabs: TabPresenceTracker,
+  triggerShutdown: () => void,
 ): Promise<void> {
   // Parsed once so every route below matches on the path alone — query strings (the reload
   // route's ?since=, and the review shell's cache-busting ?v= on the artifact route after a
@@ -509,6 +522,11 @@ async function handleRequest(
     return;
   }
 
+  if (req.method === "POST" && pathname === SHUTDOWN_ROUTE) {
+    handleShutdownRoute(res, triggerShutdown);
+    return;
+  }
+
   const match = SESSION_ROUTE.exec(pathname);
   if (req.method === "GET" && match) {
     const [, hash, artifactSuffix] = match;
@@ -538,11 +556,11 @@ async function handleRequest(
  * GET /session/:hash/reload (browser-side live-reload long-poll, watches the artifact and its
  * declared sibling assets for changes, and doubles as the issue #40 tab-presence heartbeat when
  * called with ?tab=), POST /session/:hash/end (user-initiated session end, the browser's
- * "End session" button).
+ * "End session" button), POST /shutdown (stops the whole server process, backs `inkloop stop`).
  */
 export function createInkloopServer(
   config: ServerConfig,
-  onIdleTimeout?: () => void,
+  onStop?: (reason: "idle" | "shutdown") => void,
 ): InkloopServer {
   let lastActivity = Date.now();
   const watchers = new Map<string, ArtifactWatcher>();
@@ -565,7 +583,11 @@ export function createInkloopServer(
       return;
     }
 
-    handleRequest(req, res, config, watchers, tabs).catch((err: unknown) => {
+    const triggerShutdown = () => {
+      onStop?.("shutdown");
+      void close();
+    };
+    handleRequest(req, res, config, watchers, tabs, triggerShutdown).catch((err: unknown) => {
       process.stderr.write(
         `[inkloop] request handler error: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
       );
@@ -578,7 +600,7 @@ export function createInkloopServer(
     const checkIntervalMs = Math.min(config.idleTimeoutMs, 60_000);
     idleTimer = setInterval(() => {
       if (Date.now() - lastActivity >= config.idleTimeoutMs) {
-        onIdleTimeout?.();
+        onStop?.("idle");
         void close();
       }
     }, checkIntervalMs);

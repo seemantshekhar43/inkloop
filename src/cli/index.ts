@@ -4,6 +4,7 @@ import { runOpenCommand } from "./commands/open.js";
 import { runPollCommand } from "./commands/poll.js";
 import { runEndCommand } from "./commands/end.js";
 import { runServerCommand } from "./commands/server.js";
+import { runStopCommand } from "./commands/stop.js";
 
 const HELP_TEXT = `inkloop — local-first review loop for agent-written HTML artifacts
 
@@ -13,6 +14,7 @@ Usage:
   inkloop poll <file>                     Long-poll for queued feedback
   inkloop poll <file> --agent-reply <msg> Post a revision summary, then long-poll again
   inkloop end <file>                      End a session (agent-initiated)
+  inkloop stop                            Stop the background server
   inkloop --version                       Print the installed version
   inkloop help                            Show this help text
   inkloop --help                          Show this help text
@@ -60,6 +62,10 @@ export async function run(argv: readonly string[]): Promise<number> {
       return 1;
     }
     return runEndCommand(endFile);
+  }
+
+  if (first === "stop") {
+    return runStopCommand();
   }
 
   if (first.startsWith("-")) {

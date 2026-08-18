@@ -9,8 +9,12 @@ import { createInkloopServer } from "../../server/create-server.js";
  */
 export async function runServerCommand(): Promise<never> {
   const config = loadServerConfig();
-  const instance = createInkloopServer(config, () => {
-    process.stderr.write("[inkloop] idle timeout reached, shutting down\n");
+  const instance = createInkloopServer(config, (reason) => {
+    process.stderr.write(
+      reason === "idle"
+        ? "[inkloop] idle timeout reached, shutting down\n"
+        : "[inkloop] stop requested, shutting down\n",
+    );
     process.exit(0);
   });
   const port = await instance.listening;

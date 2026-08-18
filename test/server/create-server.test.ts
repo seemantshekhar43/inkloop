@@ -777,6 +777,36 @@ void test("end route: ends the session as user-ended and returns next_step guida
   }
 });
 
+void test("shutdown route: responds then closes the server and invokes onStop with reason 'shutdown'", async () => {
+  let stopReason: string | undefined;
+  const instance = createInkloopServer(baseConfig(), (reason) => {
+    stopReason = reason;
+  });
+  const port = await instance.listening;
+
+  const { status, body } = await postJson(port, "/shutdown", {});
+  assert.equal(status, 200);
+  assert.deepEqual(body, { status: "stopping" });
+
+  // Poll for the server actually going away rather than waiting on the http.Server "close"
+  // event directly: that event only fires once every open connection ends, and the client
+  // socket that just carried the /shutdown request/response may still be lingering in the
+  // Node http.Agent's keep-alive pool at this point.
+  const deadline = Date.now() + 5000;
+  let stillUp = true;
+  while (stillUp) {
+    try {
+      await request(port, "/health");
+    } catch {
+      stillUp = false;
+      break;
+    }
+    if (Date.now() > deadline) throw new Error("server still accepting connections after 5s");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  assert.equal(stopReason, "shutdown");
+});
+
 void test("poll route: an already-ended session returns the ended shape immediately instead of waiting out the timeout", async () => {
   const stateRoot = await mkdtemp(path.join(os.tmpdir(), "inkloop-poll-ended-test-"));
   const artifactDir = await mkdtemp(path.join(os.tmpdir(), "inkloop-poll-ended-artifact-"));
