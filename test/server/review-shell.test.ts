@@ -251,3 +251,17 @@ void test("different hashes render distinct, non-colliding shells", () => {
   assert.doesNotMatch(htmlA, new RegExp(other));
   assert.match(htmlB, new RegExp(other));
 });
+
+void test("issue #42 follow-up: prefers-reduced-motion collapses the entrance/press animations and transitions", () => {
+  const html = renderReviewShell(HASH);
+  const mediaStart = html.indexOf("@media (prefers-reduced-motion: reduce)");
+  assert.ok(mediaStart >= 0, "expected a prefers-reduced-motion media query guarding the new animations");
+  const mediaEnd = html.indexOf("</style>", mediaStart);
+  const mediaBody = html.slice(mediaStart, mediaEnd);
+  // Standard collapse pattern: near-zero durations (not display:none, which would hide content)
+  // rather than removing the animation/transition rules outright.
+  assert.match(mediaBody, /animation-duration:\s*0\.01ms\s*!important/);
+  assert.match(mediaBody, /animation-iteration-count:\s*1\s*!important/);
+  assert.match(mediaBody, /transition-duration:\s*0\.01ms\s*!important/);
+  assert.match(mediaBody, /scroll-behavior:\s*auto\s*!important/);
+});
