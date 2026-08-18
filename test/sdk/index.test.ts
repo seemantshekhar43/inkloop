@@ -66,6 +66,30 @@ void test("issue #54: picking mode is not turned off when an element is picked",
   assert.doesNotMatch(clickHandlerBody, /setPickingElement\(false\)/);
 });
 
+void test("issue #62: hover-highlight and click-pick exclude <body>/<html> so the highlight clears over empty space", () => {
+  // isUnpickable() must exist and treat document.body/document.documentElement as unpickable, and
+  // both the mousemove hover-highlight handler and the click-to-pick handler must gate on it —
+  // otherwise the cursor moving into empty space (below the artifact's real content, in the
+  // wrapper's padding, etc.) leaves the highlight pinned to the page's outer wrapper instead of
+  // clearing.
+  assert.match(
+    sdkSource,
+    /function isUnpickable\(el\) \{\s*\n?\s*return el === document\.body \|\| el === document\.documentElement;/,
+  );
+  const guardOccurrences = sdkSource.match(/isSdkNode\(target\) \|\| isUnpickable\(target\)/g);
+  assert.ok(
+    guardOccurrences && guardOccurrences.length >= 2,
+    "expected isUnpickable to gate both the mousemove and click handlers",
+  );
+});
+
+void test("issue #64: the composer popup is widened to 392px and its position clamp keeps it on-screen", () => {
+  // Widened ~1.4x (280px -> 392px, issue #64); the horizontal position clamp uses innerWidth-408
+  // to keep the wider popup's right edge from ever running off-screen (392px width + 16px margin).
+  assert.match(sdkSource, /max-width:\s*392px/);
+  assert.match(sdkSource, /window\.innerWidth - 408/);
+});
+
 void test("issue #54: hover-highlight and re-picking are suspended while the composer is open", () => {
   // Both the mousemove hover-highlight and the click-to-pick handler must skip while a prior
   // pick's composer is still open (pendingTarget set), otherwise picking mode staying on would
@@ -75,4 +99,16 @@ void test("issue #54: hover-highlight and re-picking are suspended while the com
     /if \(!pickingElement \|\| pendingTarget\)\s*\n?\s*return;/g,
   );
   assert.ok(guardOccurrences && guardOccurrences.length >= 2);
+});
+
+void test("send-error echoes the SDK's own current queue back to the shell", () => {
+  // The shell's optimistic-send rollback restores `items` from this message, not from its own
+  // pre-fold snapshot - so a POST /feedback failure must hand back the queue's true state
+  // (including any note folded in via 'inkloop:add-comment' just before the failed send)
+  // instead of leaving the shell to guess from state that predates the fold-in.
+  const sendErrorIndex = sdkSource.indexOf('type: "inkloop:send-error"');
+  assert.ok(sendErrorIndex >= 0);
+  const messageEnd = sdkSource.indexOf('});', sendErrorIndex);
+  const messageBody = sdkSource.slice(sendErrorIndex, messageEnd);
+  assert.match(messageBody, /items:\s*queue/);
 });

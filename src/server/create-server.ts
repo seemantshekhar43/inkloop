@@ -32,6 +32,7 @@ const AGENT_REPLY_ROUTE = /^\/session\/([0-9a-f]{16})\/agent-reply\/?$/;
 const HISTORY_ROUTE = /^\/session\/([0-9a-f]{16})\/history\/?$/;
 const DRIFT_ROUTE = /^\/session\/([0-9a-f]{16})\/drift\/?$/;
 const RELOAD_ROUTE = /^\/session\/([0-9a-f]{16})\/reload\/?$/;
+const TAB_LEAVE_ROUTE = /^\/session\/([0-9a-f]{16})\/tab-leave\/?$/;
 const END_ROUTE = /^\/session\/([0-9a-f]{16})\/end\/?$/;
 
 /** How often the poll route re-checks for newly-queued feedback while it waits. */
@@ -46,6 +47,9 @@ const MAX_DRIFT_BODY_BYTES = 64 * 1024;
 /** Hard cap on a feedback POST body — an unauthenticated local server should never buffer an
  * unbounded request into memory, regardless of what shape validation would later reject it for. */
 const MAX_FEEDBACK_BODY_BYTES = 2 * 1024 * 1024;
+
+/** Hard cap on a tab-leave beacon body (issue #65) — just a tab id, so this stays tiny. */
+const MAX_TAB_LEAVE_BODY_BYTES = 4 * 1024;
 
 /**
  * Buffers a request body up to a byte cap, returning undefined if it was exceeded. Stops
@@ -372,6 +376,36 @@ async function handleReloadRoute(
 }
 
 /**
+ * Issue #65: the review shell sends a `navigator.sendBeacon` here on `pagehide` (tab closed,
+ * navigated away, or reloaded) so this tab's presence clears immediately instead of lingering
+ * until it ages out of the reload-poll heartbeat (up to `staleAfterMs`, currently 3x the poll
+ * timeout) — during that window, whatever tab a reviewer opens next could see a stale "open in
+ * another tab" banner for a tab that's already gone. A beacon is fire-and-forget by design (the
+ * page is unloading, nothing can react to a response), so this always returns 204 regardless of
+ * whether hash/tabId turned out to be valid — same best-effort spirit as the beacon call site.
+ */
+async function handleTabLeaveRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  hash: string,
+  tabs: TabPresenceTracker,
+): Promise<void> {
+  const raw = await readBody(req, MAX_TAB_LEAVE_BODY_BYTES);
+  if (raw !== undefined) {
+    try {
+      const body = JSON.parse(raw) as { tabId?: unknown };
+      if (typeof body.tabId === "string" && body.tabId.length > 0) {
+        tabs.release(hash, body.tabId);
+      }
+    } catch {
+      // Malformed beacon body — nothing to release, fall through to the same 204 either way.
+    }
+  }
+  res.writeHead(204);
+  res.end();
+}
+
+/**
  * User-initiated end (issue #9): the browser's "End session" button posts here. Ends the
  * session with status "user-ended", the terminal state `openOrResumeSession` refuses to reopen
  * without `--reopen` — see session-store.ts's docstring for the full reopen semantics. A poll
@@ -460,6 +494,12 @@ async function handleRequest(
       tabs,
       tabId,
     );
+    return;
+  }
+
+  const tabLeaveMatch = TAB_LEAVE_ROUTE.exec(pathname);
+  if (req.method === "POST" && tabLeaveMatch) {
+    await handleTabLeaveRoute(req, res, tabLeaveMatch[1] as string, tabs);
     return;
   }
 

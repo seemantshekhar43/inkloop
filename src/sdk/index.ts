@@ -134,7 +134,9 @@
       outline: 2px solid #6f5bff; outline-offset: 1px; background: rgba(111, 91, 255, 0.08);
     }
     .inkloop-composer {
-      position: fixed; z-index: 2147483647; max-width: 280px;
+      /* Issue #64: widened ~1.4x (280px -> 392px) — comments longer than a line or two were
+         cramped into a lot of internal scrolling at the old size. */
+      position: fixed; z-index: 2147483647; max-width: 392px;
       font: 13px/1.4 system-ui, sans-serif; background: #1c1c22; color: #f2f2f5;
       border-radius: 10px; padding: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.35);
     }
@@ -217,7 +219,7 @@
   function showComposerAt(x: number, y: number, target: FeedbackTarget, rect: DOMRectReadOnly): void {
     pendingTarget = target;
     pinHighlight(rect);
-    composer.style.left = `${Math.max(8, Math.min(x, window.innerWidth - 296))}px`;
+    composer.style.left = `${Math.max(8, Math.min(x, window.innerWidth - 408))}px`;
     composer.style.top = `${Math.max(8, Math.min(y, window.innerHeight - 140))}px`;
     composer.classList.remove("inkloop-hidden");
     textarea.value = "";
@@ -256,6 +258,18 @@
     return el === host || (el instanceof Node && host.contains(el));
   }
 
+  /**
+   * Issue #62: <body>/<html> themselves are never a meaningful pick target: they're the page's outer
+   * wrapper, not "an element" in the sense a reviewer means when picking one to comment on. Once
+   * the cursor is over empty space inside that wrapper (below the artifact's real content, in its
+   * padding, etc.) event.target still resolves to one of these two, which without this check kept
+   * the highlight pinned to that huge wrapper rect — reading as "still selected" even though the
+   * cursor isn't over anything worth annotating.
+   */
+  function isUnpickable(el: Element): boolean {
+    return el === document.body || el === document.documentElement;
+  }
+
   document.addEventListener(
     "mousemove",
     (event) => {
@@ -264,7 +278,7 @@
       // mouse moving over the rest of the artifact behind the composer.
       if (!pickingElement || pendingTarget) return;
       const target = event.target;
-      if (!(target instanceof Element) || isSdkNode(target)) {
+      if (!(target instanceof Element) || isSdkNode(target) || isUnpickable(target)) {
         highlight.classList.add("inkloop-hidden");
         return;
       }
@@ -298,7 +312,7 @@
       // prior pick is still open (pendingTarget set) rather than re-picking out from under it.
       if (!pickingElement || pendingTarget) return;
       const target = event.target;
-      if (!(target instanceof Element) || isSdkNode(target)) return;
+      if (!(target instanceof Element) || isSdkNode(target) || isUnpickable(target)) return;
       event.preventDefault();
       event.stopPropagation();
       const rect = target.getBoundingClientRect();
@@ -435,6 +449,7 @@
       postToParent({
         type: "inkloop:send-error",
         message: err instanceof Error ? err.message : String(err),
+        items: queue,
       });
     }
   }
