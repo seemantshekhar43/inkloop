@@ -36,11 +36,16 @@ export function renderReviewShell(hash: string): string {
 <style>
   :root {
     --ink-bg: #0b0b0f;
+    --ink-bg-glow: radial-gradient(1200px 480px at 12% -10%, rgba(111, 91, 255, 0.16), transparent 60%),
+      radial-gradient(900px 420px at 100% 0%, rgba(232, 165, 60, 0.06), transparent 55%);
     --ink-panel: #141419;
+    --ink-panel-raised: #191921;
     --ink-border: #242430;
+    --ink-border-soft: #1c1c24;
     --ink-text: #e9e9ee;
     --ink-dim: #8f8fa3;
     --ink-accent: #6f5bff;
+    --ink-accent-2: #9d8fff;
     --ink-accent-soft: rgba(111, 91, 255, 0.12);
     --ink-accent-text: #ffffff;
     /* Issue #44: --ink-accent itself is only ~3.6:1 against the tinted pill/history-item
@@ -60,6 +65,22 @@ export function renderReviewShell(hash: string): string {
     --space-2: 8px;
     --space-3: 12px;
     --space-4: 16px;
+    /* Issue #42: a deliberate type scale instead of ad hoc px values scattered per rule — the
+       ratio (~1.15) is tight on purpose, since this is a dense review tool, not a marketing page,
+       but every size below is now a step on the same scale rather than a one-off guess. */
+    --text-2xs: 10px;
+    --text-xs: 11px;
+    --text-sm: 12px;
+    --text-base: 13px;
+    --text-md: 15px;
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.24);
+    --shadow-md: 0 6px 20px rgba(0, 0, 0, 0.35);
+    --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
+    --shadow-glow: 0 0 0 1px rgba(111, 91, 255, 0.28), 0 4px 16px rgba(111, 91, 255, 0.18);
   }
   * { box-sizing: border-box; }
   html, body {
@@ -70,29 +91,53 @@ export function renderReviewShell(hash: string): string {
        otherwise. No webfont load: inkloop stays local-first/no-CDN (see README), so this is a
        font-family preference only, never a network fetch. */
     font-family: "JetBrains Mono", "Fira Code", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    font-size: 13px;
-    background: var(--ink-bg); color: var(--ink-text);
+    font-size: var(--text-base);
+    /* Issue #42: a faint two-point radial glow over the flat base color — reads as a considered
+       surface rather than default-browser black, without introducing any texture heavy enough to
+       compete with the artifact iframe it sits behind. */
+    background: var(--ink-bg-glow), var(--ink-bg);
+    background-attachment: fixed;
+    color: var(--ink-text);
   }
+  /* Issue #42: a themed scrollbar everywhere the default browser chrome would otherwise show
+     through (history panel, thread, textarea resize) — Firefox via scrollbar-color, WebKit via
+     the ::-webkit-scrollbar-* pseudo-elements below. */
+  * { scrollbar-width: thin; scrollbar-color: var(--ink-border) transparent; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--ink-border); border-radius: 999px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--ink-dim); }
   body { display: flex; flex-direction: column; }
   header {
     flex: 0 0 auto; display: flex; align-items: center; gap: var(--space-3);
     padding: var(--space-3) var(--space-4);
     border-bottom: 1px solid var(--ink-border); background: var(--ink-panel);
+    box-shadow: var(--shadow-sm);
+    position: relative; z-index: 1;
   }
-  .wordmark { font-weight: 700; letter-spacing: 0.02em; }
-  .wordmark::before { content: "⌁ "; color: var(--ink-accent); }
+  .wordmark {
+    font-weight: 700; font-size: var(--text-md); letter-spacing: 0.01em;
+    background: linear-gradient(120deg, var(--ink-text) 35%, var(--ink-accent-2));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .wordmark::before { content: "⌁ "; color: var(--ink-accent); -webkit-text-fill-color: var(--ink-accent); }
   .session-path {
-    flex: 1; color: var(--ink-dim); font-size: 12px;
+    flex: 1; color: var(--ink-dim); font-size: var(--text-sm);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   button.pick {
-    appearance: none; border: 1px solid var(--ink-border); background: transparent;
-    color: var(--ink-text); padding: var(--space-2) var(--space-3); border-radius: 6px;
+    appearance: none; border: 1px solid var(--ink-border); background: var(--ink-panel-raised);
+    color: var(--ink-text); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);
     font: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: var(--space-2);
-    transition: background-color 0.12s ease, border-color 0.12s ease;
+    transition: background-color 0.15s var(--ease-out), border-color 0.15s var(--ease-out),
+      box-shadow 0.15s var(--ease-out), transform 0.1s var(--ease-out);
   }
   button.pick:hover { border-color: var(--ink-accent); }
-  button.pick.active { background: var(--ink-accent); border-color: var(--ink-accent); color: var(--ink-accent-text); }
+  button.pick:active { transform: scale(0.97); }
+  button.pick.active {
+    background: var(--ink-accent); border-color: var(--ink-accent); color: var(--ink-accent-text);
+    box-shadow: var(--shadow-glow);
+  }
   /* Issue #27: a bare border/background change read as too subtle to register as an on/off
      toggle at a glance — a dot indicator (hollow when off, solid-filled when on, matching the
      familiar "recording" convention) plus a label that swaps to an explicit call-to-cancel make
@@ -105,23 +150,31 @@ export function renderReviewShell(hash: string): string {
   button.pick.active .pick-dot { background: var(--ink-accent-text); border-color: var(--ink-accent-text); }
   button.end-session {
     appearance: none; border: 1px solid var(--ink-border); background: transparent;
-    color: var(--ink-error); padding: var(--space-2) var(--space-3); border-radius: 6px;
-    font: inherit; cursor: pointer; transition: background-color 0.12s ease, border-color 0.12s ease;
+    color: var(--ink-error); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm);
+    font: inherit; cursor: pointer;
+    transition: background-color 0.15s var(--ease-out), border-color 0.15s var(--ease-out), transform 0.1s var(--ease-out);
   }
   button.end-session:hover { border-color: var(--ink-error); background: rgba(255, 107, 107, 0.1); }
-  button.end-session:disabled { opacity: 0.4; cursor: default; }
+  button.end-session:active { transform: scale(0.97); }
+  button.end-session:disabled { opacity: 0.4; cursor: default; transform: none; }
   .ended-banner {
     flex: 0 0 auto; display: none; align-items: center;
-    padding: var(--space-2) var(--space-4); font-size: 12px; color: var(--ink-accent-text);
+    padding: var(--space-2) var(--space-4); font-size: var(--text-sm); color: var(--ink-accent-text);
     background: var(--ink-error); border-bottom: 1px solid var(--ink-border);
+    animation: bannerIn 0.2s var(--ease-out);
   }
   .ended-banner.visible { display: flex; }
   .tab-banner {
     flex: 0 0 auto; display: none; align-items: center;
-    padding: var(--space-2) var(--space-4); font-size: 12px; color: var(--ink-agent);
+    padding: var(--space-2) var(--space-4); font-size: var(--text-sm); color: var(--ink-agent);
     background: var(--ink-agent-soft); border-bottom: 1px solid var(--ink-border);
+    animation: bannerIn 0.2s var(--ease-out);
   }
   .tab-banner.visible { display: flex; }
+  @keyframes bannerIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
   /* Issue #61: shown as a one-time reminder when Sidenote turns on, not for as long as picking
      mode stays active — the toggle button itself (active/pressed state, dot lit, "Stop Sidenote"
      label) is the persistent indicator, so the banner only needs to teach the mechanism once per
@@ -130,9 +183,9 @@ export function renderReviewShell(hash: string): string {
      rather than a jump-cut. */
   .picking-hint {
     flex: 0 0 auto; display: none; align-items: center;
-    padding: var(--space-2) var(--space-4); font-size: 12px; color: var(--ink-accent-text);
+    padding: var(--space-2) var(--space-4); font-size: var(--text-sm); color: var(--ink-accent-text);
     background: var(--ink-accent); border-bottom: 1px solid var(--ink-border);
-    opacity: 1; transition: opacity 0.3s ease;
+    opacity: 1; transition: opacity 0.3s ease; animation: bannerIn 0.2s var(--ease-out);
   }
   .picking-hint.visible { display: flex; }
   .picking-hint.fading { opacity: 0; }
@@ -144,47 +197,52 @@ export function renderReviewShell(hash: string): string {
   aside#dock {
     flex: 0 0 340px; width: 340px; display: flex; flex-direction: column; min-height: 0;
     border-left: 1px solid var(--ink-border); background: var(--ink-panel);
+    box-shadow: -12px 0 32px -12px rgba(0, 0, 0, 0.4);
+    position: relative; z-index: 1;
   }
   .dock-section-label {
-    flex: 0 0 auto; font-size: 11px; color: var(--ink-dim);
+    flex: 0 0 auto; font-size: var(--text-xs); color: var(--ink-dim);
+    text-transform: uppercase; letter-spacing: 0.06em;
     padding: var(--space-3) var(--space-4) var(--space-2);
   }
   .history-panel {
     flex: 1 1 auto; display: flex; flex-direction: column; gap: var(--space-3);
     overflow-y: auto; min-height: 80px; padding: 0 var(--space-4) var(--space-3);
   }
-  .history-empty { color: var(--ink-dim); font-size: 12px; }
+  .history-empty { color: var(--ink-dim); font-size: var(--text-sm); }
   .history-round { display: flex; flex-direction: column; gap: var(--space-2); }
   /* Issue #63: the optimistic round painted in immediately on Send, before the server has
      confirmed it — same markup as a real round, just visibly provisional until it does. */
   .history-round.pending { opacity: 0.6; }
   .history-round-label {
-    font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-dim);
+    font-size: var(--text-2xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-dim);
   }
   .history-items { display: flex; flex-direction: column; gap: var(--space-1); }
   .history-item {
     border-left: 2px solid var(--ink-accent); background: var(--ink-accent-soft);
-    border-radius: 0 6px 6px 0; padding: var(--space-1) var(--space-2); font-size: 12px; line-height: 1.4;
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: var(--space-2);
+    font-size: var(--text-sm); line-height: 1.45; box-shadow: var(--shadow-sm);
   }
   .history-item-target {
-    color: var(--ink-accent-label); font-size: 10px; text-transform: uppercase;
-    letter-spacing: 0.05em; margin-right: var(--space-1);
+    color: var(--ink-accent-label); font-size: var(--text-2xs); text-transform: uppercase;
+    letter-spacing: 0.06em; margin-right: var(--space-1);
   }
   .history-item-comment { color: var(--ink-text); word-break: break-word; }
   .history-item.drifted { border-left-color: var(--ink-error); background: rgba(255, 107, 107, 0.1); }
   .history-item-drift-note {
-    display: block; color: var(--ink-error); font-size: 10px; text-transform: uppercase;
-    letter-spacing: 0.05em; margin-top: var(--space-1);
+    display: block; color: var(--ink-error); font-size: var(--text-2xs); text-transform: uppercase;
+    letter-spacing: 0.06em; margin-top: var(--space-1);
   }
   .history-reply {
     border-left: 2px solid var(--ink-agent); background: var(--ink-agent-soft);
-    border-radius: 0 6px 6px 0; padding: var(--space-1) var(--space-2);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: var(--space-2);
+    box-shadow: var(--shadow-sm);
   }
   .history-reply-label {
-    color: var(--ink-agent); font-size: 10px; text-transform: uppercase;
-    letter-spacing: 0.05em; margin-bottom: var(--space-1);
+    color: var(--ink-agent); font-size: var(--text-2xs); text-transform: uppercase;
+    letter-spacing: 0.06em; margin-bottom: var(--space-1);
   }
-  .history-reply-message { color: var(--ink-text); font-size: 12px; line-height: 1.4; white-space: pre-wrap; word-break: break-word; }
+  .history-reply-message { color: var(--ink-text); font-size: var(--text-sm); line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
   /* The queued-but-unsent draft thread: a horizontally-scrolling strip in the old bottom dock,
      now a vertical stack — the side panel's column is narrower than most drafts' natural width,
      so stacking reads better than a second internal scrollbar running the other way. */
@@ -193,24 +251,31 @@ export function renderReviewShell(hash: string): string {
     overflow-y: auto; max-height: 40%; min-height: 0;
     padding: var(--space-3) var(--space-4); border-top: 1px solid var(--ink-border);
   }
-  .thread-empty { color: var(--ink-dim); font-size: 12px; padding: var(--space-1) 0; }
+  .thread-empty { color: var(--ink-dim); font-size: var(--text-sm); padding: var(--space-1) 0; }
   .thread-empty::before { content: "› "; color: var(--ink-accent); }
   .pill {
-    position: relative; border: 1px solid var(--ink-border); border-radius: 8px;
+    position: relative; border: 1px solid var(--ink-border); border-radius: var(--radius-md);
     padding: var(--space-2) var(--space-3); padding-right: 26px;
-    background: #1a1a22; font-size: 12px; line-height: 1.4;
-    transition: border-color 0.12s ease;
+    background: var(--ink-panel-raised); font-size: var(--text-sm); line-height: 1.45;
+    box-shadow: var(--shadow-sm);
+    transition: border-color 0.15s var(--ease-out), box-shadow 0.15s var(--ease-out), transform 0.15s var(--ease-out);
+    animation: pillIn 0.18s var(--ease-out);
   }
-  .pill:hover { border-color: var(--ink-accent); }
+  .pill:hover { border-color: var(--ink-accent); box-shadow: var(--shadow-glow); transform: translateY(-1px); }
+  @keyframes pillIn {
+    from { opacity: 0; transform: translateY(4px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
   .pill .pill-target {
-    color: var(--ink-accent-label); font-size: 10px; text-transform: uppercase;
-    letter-spacing: 0.05em; margin-bottom: var(--space-1);
+    color: var(--ink-accent-label); font-size: var(--text-2xs); text-transform: uppercase;
+    letter-spacing: 0.06em; margin-bottom: var(--space-1);
   }
   .pill .pill-comment { color: var(--ink-text); white-space: normal; word-break: break-word; }
   .pill-remove {
     position: absolute; top: 4px; right: 4px; width: 18px; height: 18px;
-    appearance: none; border: 0; border-radius: 4px; background: transparent;
+    appearance: none; border: 0; border-radius: var(--radius-sm); background: transparent;
     color: var(--ink-dim); font: inherit; line-height: 1; cursor: pointer;
+    transition: background-color 0.12s ease, color 0.12s ease;
   }
   .pill-remove:hover { background: var(--ink-border); color: var(--ink-text); }
   /* Stacked, not the old side-by-side row — 340px isn't wide enough for a textarea and a
@@ -222,9 +287,12 @@ export function renderReviewShell(hash: string): string {
   .composer-row textarea {
     resize: vertical; min-height: 36px; max-height: 160px;
     background: #101014; color: var(--ink-text); border: 1px solid var(--ink-border);
-    border-radius: 6px; padding: var(--space-2); font: inherit;
+    border-radius: var(--radius-sm); padding: var(--space-2); font: inherit;
+    transition: border-color 0.15s var(--ease-out), box-shadow 0.15s var(--ease-out);
   }
-  .composer-row textarea:focus { outline: none; border-color: var(--ink-accent); }
+  .composer-row textarea:focus {
+    outline: none; border-color: var(--ink-accent); box-shadow: var(--shadow-glow);
+  }
   .composer-row textarea:disabled { opacity: 0.4; cursor: default; }
   /* Issue #44: pinned explicitly rather than left to the browser's own placeholder styling —
      Chrome/Firefox/Safari each dim placeholder text by a different default opacity, none of
@@ -234,13 +302,17 @@ export function renderReviewShell(hash: string): string {
      this stylesheet, not of whichever browser the reviewer happens to be running. */
   .composer-row textarea::placeholder { color: var(--ink-dim); opacity: 1; }
   .composer-row button {
-    appearance: none; border: 0; border-radius: 6px; padding: var(--space-2) var(--space-4);
-    font: inherit; cursor: pointer; background: var(--ink-accent); color: var(--ink-accent-text);
-    align-self: flex-end; transition: opacity 0.12s ease;
+    appearance: none; border: 0; border-radius: var(--radius-sm); padding: var(--space-2) var(--space-4);
+    font: inherit; font-weight: 600; cursor: pointer;
+    background: linear-gradient(155deg, #8171ff, var(--ink-accent)); color: var(--ink-accent-text);
+    align-self: flex-end; box-shadow: var(--shadow-sm);
+    transition: opacity 0.12s ease, transform 0.1s var(--ease-out), box-shadow 0.15s var(--ease-out);
   }
-  .composer-row button:disabled { opacity: 0.4; cursor: default; }
+  .composer-row button:hover:not(:disabled) { box-shadow: var(--shadow-glow); transform: translateY(-1px); }
+  .composer-row button:active:not(:disabled) { transform: translateY(0) scale(0.97); }
+  .composer-row button:disabled { opacity: 0.4; cursor: default; transform: none; box-shadow: none; }
   .composer-row button.sending { opacity: 0.7; cursor: progress; }
-  .status { font-size: 11px; color: var(--ink-dim); padding: 0 var(--space-4) var(--space-2); min-height: 14px; }
+  .status { font-size: var(--text-xs); color: var(--ink-dim); padding: 0 var(--space-4) var(--space-2); min-height: 14px; }
   .status.success { color: var(--ink-success); }
   .status.error { color: var(--ink-error); }
 
@@ -250,31 +322,40 @@ export function renderReviewShell(hash: string): string {
   .modal-overlay {
     display: none; position: fixed; inset: 0; z-index: 10;
     align-items: center; justify-content: center;
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(6, 6, 9, 0.72); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+    animation: overlayIn 0.15s var(--ease-out);
   }
   .modal-overlay.visible { display: flex; }
+  @keyframes overlayIn { from { opacity: 0; } to { opacity: 1; } }
   .modal {
     width: min(320px, calc(100vw - var(--space-4) * 2));
-    background: var(--ink-panel); border: 1px solid var(--ink-border); border-radius: 8px;
-    padding: var(--space-4); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    background: var(--ink-panel-raised); border: 1px solid var(--ink-border); border-radius: var(--radius-lg);
+    padding: var(--space-4); box-shadow: var(--shadow-lg);
+    animation: modalIn 0.18s var(--ease-out);
   }
-  .modal-title { font-weight: 700; margin-bottom: var(--space-2); }
-  .modal-body { color: var(--ink-dim); font-size: 12px; line-height: 1.5; }
+  @keyframes modalIn {
+    from { opacity: 0; transform: translateY(8px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .modal-title { font-weight: 700; font-size: var(--text-md); margin-bottom: var(--space-2); }
+  .modal-body { color: var(--ink-dim); font-size: var(--text-sm); line-height: 1.5; }
   .modal-body code {
     background: #1a1a22; border-radius: 4px; padding: 1px 4px; color: var(--ink-text);
-    font-size: 11px;
+    font-size: var(--text-xs);
   }
   .modal-actions {
     display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-4);
   }
   .modal-actions button {
-    appearance: none; border-radius: 6px; padding: var(--space-2) var(--space-3);
-    font: inherit; cursor: pointer; transition: background-color 0.12s ease, border-color 0.12s ease;
+    appearance: none; border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3);
+    font: inherit; cursor: pointer;
+    transition: background-color 0.15s var(--ease-out), border-color 0.15s var(--ease-out), transform 0.1s var(--ease-out);
   }
+  .modal-actions button:active { transform: scale(0.97); }
   .modal-cancel { border: 1px solid var(--ink-border); background: transparent; color: var(--ink-text); }
   .modal-cancel:hover { border-color: var(--ink-dim); }
   .modal-confirm { border: 1px solid var(--ink-error); background: var(--ink-error); color: var(--ink-accent-text); }
-  .modal-confirm:hover { opacity: 0.9; }
+  .modal-confirm:hover { opacity: 0.9; box-shadow: 0 4px 16px rgba(255, 107, 107, 0.25); }
 
   /* Issue #43: below ~900px, the side panel's fixed width becomes the scarcer resource rather
      than the vertical space it reclaims — fold back into a full-width bottom dock, the layout
