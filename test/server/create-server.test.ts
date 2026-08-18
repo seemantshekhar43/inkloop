@@ -7,8 +7,16 @@ import os from "node:os";
 import path from "node:path";
 import { createInkloopServer } from "../../src/server/create-server.js";
 import type { ServerConfig } from "../../src/server/config.js";
-import { hashArtifactPath, openOrResumeSession, readSessionRecord } from "../../src/shared/session-store.js";
-import { appendFeedback, readFeedback, takePendingFeedback } from "../../src/shared/feedback-store.js";
+import {
+  hashArtifactPath,
+  openOrResumeSession,
+  readSessionRecord,
+} from "../../src/shared/session-store.js";
+import {
+  appendFeedback,
+  readFeedback,
+  takePendingFeedback,
+} from "../../src/shared/feedback-store.js";
 import { readAgentReplies } from "../../src/shared/agent-reply-store.js";
 
 function baseConfig(overrides: Partial<ServerConfig> = {}): ServerConfig {
@@ -484,7 +492,10 @@ void test("agent-reply route: valid message is accepted and persisted, unknown s
       message: "revised the layout per feedback",
     });
     assert.equal(status, 201);
-    assert.equal((body as { reply: { message: string } }).reply.message, "revised the layout per feedback");
+    assert.equal(
+      (body as { reply: { message: string } }).reply.message,
+      "revised the layout per feedback",
+    );
 
     const stored = await readAgentReplies(hash, stateRoot);
     assert.equal(stored.length, 1);
@@ -651,7 +662,9 @@ void test("reload route: times out at the current version with no change, and pi
     assert.equal((body as { version: number }).version, 1);
 
     const unknownHash = "0".repeat(16);
-    const missing = await request(port, `/session/${unknownHash}/reload?since=0`, { host: "127.0.0.1" });
+    const missing = await request(port, `/session/${unknownHash}/reload?since=0`, {
+      host: "127.0.0.1",
+    });
     assert.equal(missing.status, 404);
   } finally {
     await instance.close();
@@ -680,7 +693,9 @@ void test("reload route: flags otherTabActive once a second tab's ?tab= id is se
     const hash = hashArtifactPath(artifactPath);
 
     // A lone tab never sees the banner.
-    const solo = await request(port, `/session/${hash}/reload?since=0&tab=tab-a`, { host: "127.0.0.1" });
+    const solo = await request(port, `/session/${hash}/reload?since=0&tab=tab-a`, {
+      host: "127.0.0.1",
+    });
     assert.equal((solo.body as { otherTabActive: boolean }).otherTabActive, false);
 
     // A second tab id shows up: it sees the first tab immediately.
@@ -690,7 +705,9 @@ void test("reload route: flags otherTabActive once a second tab's ?tab= id is se
     assert.equal((secondTabSees.body as { otherTabActive: boolean }).otherTabActive, true);
 
     // A pre-#40 client with no ?tab= at all is unaffected either way — no crash, no false flag.
-    const noTabParam = await request(port, `/session/${hash}/reload?since=0`, { host: "127.0.0.1" });
+    const noTabParam = await request(port, `/session/${hash}/reload?since=0`, {
+      host: "127.0.0.1",
+    });
     assert.equal((noTabParam.body as { otherTabActive: boolean }).otherTabActive, false);
   } finally {
     await instance.close();
@@ -721,7 +738,12 @@ void test("tab-leave route: releases a tab's presence immediately instead of wai
     });
     assert.equal((beforeLeave.body as { otherTabActive: boolean }).otherTabActive, true);
 
-    const leave = await postJson(port, `/session/${hash}/tab-leave`, { tabId: "tab-a" }, { host: "127.0.0.1" });
+    const leave = await postJson(
+      port,
+      `/session/${hash}/tab-leave`,
+      { tabId: "tab-a" },
+      { host: "127.0.0.1" },
+    );
     assert.equal(leave.status, 204);
 
     const afterLeave = await request(port, `/session/${hash}/reload?since=0&tab=tab-b`, {
@@ -731,7 +753,12 @@ void test("tab-leave route: releases a tab's presence immediately instead of wai
 
     // A malformed/empty beacon body is a harmless no-op, not a 4xx/5xx — the page is unloading,
     // nothing could react to an error response anyway.
-    const malformed = await postJson(port, `/session/${hash}/tab-leave`, { tabId: 123 }, { host: "127.0.0.1" });
+    const malformed = await postJson(
+      port,
+      `/session/${hash}/tab-leave`,
+      { tabId: 123 },
+      { host: "127.0.0.1" },
+    );
     assert.equal(malformed.status, 204);
   } finally {
     await instance.close();

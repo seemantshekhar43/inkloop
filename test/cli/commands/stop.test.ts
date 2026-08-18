@@ -64,10 +64,12 @@ void test("stop: shuts down a running server and reports success", async () => {
     const deadline = Date.now() + 5000;
     for (;;) {
       const stillUp = await new Promise<boolean>((resolve) => {
-        http.get(`http://127.0.0.1:${port}/health`, (res) => {
-          res.resume();
-          resolve(true);
-        }).on("error", () => resolve(false));
+        http
+          .get(`http://127.0.0.1:${port}/health`, (res) => {
+            res.resume();
+            resolve(true);
+          })
+          .on("error", () => resolve(false));
       });
       if (!stillUp) break;
       if (Date.now() > deadline) throw new Error("server still accepting connections after 5s");
