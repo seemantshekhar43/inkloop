@@ -34,6 +34,12 @@ void test("--help prints usage and exits 0", async () => {
   assert.match(text, /Usage:/);
 });
 
+void test("help prints usage and exits 0", async () => {
+  const { code, text } = await captureWrite(process.stdout, () => run(["help"]));
+  assert.equal(code, 0);
+  assert.match(text, /Usage:/);
+});
+
 void test("no arguments prints usage and exits 1", async () => {
   const { code, text } = await captureWrite(process.stdout, () => run([]));
   assert.equal(code, 1);

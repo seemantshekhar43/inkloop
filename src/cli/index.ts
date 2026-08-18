@@ -14,6 +14,7 @@ Usage:
   inkloop poll <file> --agent-reply <msg> Post a revision summary, then long-poll again
   inkloop end <file>                      End a session (agent-initiated)
   inkloop --version                       Print the installed version
+  inkloop help                            Show this help text
   inkloop --help                          Show this help text
 `;
 
@@ -25,7 +26,7 @@ export async function run(argv: readonly string[]): Promise<number> {
     return 0;
   }
 
-  if (first === "--help" || first === "-h" || first === undefined) {
+  if (first === "help" || first === "--help" || first === "-h" || first === undefined) {
     process.stdout.write(HELP_TEXT);
     return first === undefined ? 1 : 0;
   }
