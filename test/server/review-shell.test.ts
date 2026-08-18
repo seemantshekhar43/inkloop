@@ -223,7 +223,10 @@ void test("issue #63: inkloop:send-error rolls back the optimistic clear and re-
   assert.ok(errorHandlerStart >= 0);
   const errorHandlerEnd = html.indexOf('} else if', errorHandlerStart);
   const errorHandlerBody = html.slice(errorHandlerStart, errorHandlerEnd);
-  assert.match(errorHandlerBody, /items = pendingSendItems;/);
+  // Restores from the SDK's own echoed queue (data.items) rather than the pre-fold
+  // pendingSendItems snapshot, so a composer note folded in via 'inkloop:add-comment' just
+  // before the failed send isn't silently dropped from view.
+  assert.match(errorHandlerBody, /items = Array\.isArray\(data\.items\) \? data\.items : pendingSendItems;/);
   assert.match(errorHandlerBody, /pendingSendItems = null;/);
   assert.match(errorHandlerBody, /renderHistory\(lastHistory\);/);
 });

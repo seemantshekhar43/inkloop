@@ -100,3 +100,15 @@ void test("issue #54: hover-highlight and re-picking are suspended while the com
   );
   assert.ok(guardOccurrences && guardOccurrences.length >= 2);
 });
+
+void test("send-error echoes the SDK's own current queue back to the shell", () => {
+  // The shell's optimistic-send rollback restores `items` from this message, not from its own
+  // pre-fold snapshot - so a POST /feedback failure must hand back the queue's true state
+  // (including any note folded in via 'inkloop:add-comment' just before the failed send)
+  // instead of leaving the shell to guess from state that predates the fold-in.
+  const sendErrorIndex = sdkSource.indexOf('type: "inkloop:send-error"');
+  assert.ok(sendErrorIndex >= 0);
+  const messageEnd = sdkSource.indexOf('});', sendErrorIndex);
+  const messageBody = sdkSource.slice(sendErrorIndex, messageEnd);
+  assert.match(messageBody, /items:\s*queue/);
+});

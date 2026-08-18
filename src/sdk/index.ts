@@ -449,6 +449,7 @@
       postToParent({
         type: "inkloop:send-error",
         message: err instanceof Error ? err.message : String(err),
+        items: queue,
       });
     }
   }

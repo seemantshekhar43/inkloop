@@ -707,9 +707,12 @@ export function renderReviewShell(hash: string): string {
     } else if (data.type === 'inkloop:send-error') {
       // Roll back the optimistic update above: put the unsent items back in the thread and drop
       // the pending round from the history panel (a plain re-render of lastHistory, which never
-      // included it).
+      // included it). Restore from the SDK's own current queue (data.items) rather than the
+      // pendingSendItems snapshot taken before the click folded the composer's text in via
+      // 'inkloop:add-comment' - that fold-in landed in the SDK's queue even though the send
+      // failed, so pendingSendItems alone would silently drop it from view.
       if (pendingSendItems) {
-        items = pendingSendItems;
+        items = Array.isArray(data.items) ? data.items : pendingSendItems;
         pendingSendItems = null;
         render();
       }
