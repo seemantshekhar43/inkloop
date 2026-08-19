@@ -377,3 +377,43 @@ void test("issue #73: sending clears every suggestion immediately, not just once
     "suggestions should clear synchronously within the click handler, before the send is posted",
   );
 });
+
+void test("issue #76: a round-history entry carries a status derived from deliveredAt/reply, not just its own existence", () => {
+  const html = renderReviewShell(HASH);
+  const statusFnMatch = html.match(/function roundStatus\(round\) \{[\s\S]*?\n {2}\}/);
+  assert.ok(statusFnMatch, "expected to find roundStatus()");
+  const body = statusFnMatch[0];
+  // Reply present -> revised, regardless of delivery state.
+  assert.match(body, /if \(round\.reply\) return \{ key: 'revised', label: 'Revised' \};/);
+  // No reply, but every item has deliveredAt -> agent has it (a rotating verb, not a fixed label).
+  assert.match(body, /allDelivered = roundItems\.length > 0 && roundItems\.every/);
+  assert.match(body, /item\.deliveredAt/);
+  assert.match(body, /key: 'delivered'/);
+  // Anything else (nothing delivered yet, or only some items delivered) -> queued.
+  assert.match(body, /return \{ key: 'queued', label: 'Queued' \};/);
+});
+
+void test("issue #76: the round label renders a status pill wired to roundHtml's pending/roundStatus branches", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /class="history-round-status status-' \+ status\.key \+ '"/);
+  const roundHtmlMatch = html.match(/function roundHtml\(round, pending\) \{[\s\S]*?\n {2}\}/);
+  assert.ok(roundHtmlMatch, "expected to find roundHtml()");
+  assert.match(
+    roundHtmlMatch[0],
+    /var status = pending \? \{ key: 'sending', label: 'Sending…' \} : roundStatus\(round\);/,
+  );
+});
+
+void test("issue #76: the working-status verb bank is single-word and rotates deterministically by round number", () => {
+  const html = renderReviewShell(HASH);
+  const verbsMatch = html.match(/var WORKING_VERBS = \[([\s\S]*?)\];/);
+  assert.ok(verbsMatch, "expected to find WORKING_VERBS");
+  const verbs = (verbsMatch?.[1] ?? "").match(/'([^']+)'/g)?.map((s) => s.slice(1, -1)) ?? [];
+  assert.ok(verbs.length > 0, "expected at least one working verb");
+  for (const verb of verbs) {
+    assert.doesNotMatch(verb, /\s/, `expected "${verb}" to be a single word`);
+  }
+  // Deterministic per round (round.round % verbs.length), not Math.random() - a re-render of the
+  // same round must not flicker to a different verb.
+  assert.match(html, /WORKING_VERBS\[round\.round % WORKING_VERBS\.length\]/);
+});

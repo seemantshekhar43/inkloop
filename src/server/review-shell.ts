@@ -230,7 +230,31 @@ export function renderReviewShell(hash: string): string {
      confirmed it — same markup as a real round, just visibly provisional until it does. */
   .history-round.pending { opacity: 0.6; }
   .history-round-label {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
     font-size: var(--text-2xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-dim);
+  }
+  /* Issue #76: a reviewer sending feedback had no way to tell "the agent hasn't looked at this
+     yet" from "the agent has it and is working" from "stuck" — the only prior signal was the
+     artifact silently live-reloading once a revision landed. Driven entirely off data the server
+     already tracked (FeedbackItem.deliveredAt, set the moment an inkloop poll call claims a
+     round, and the round's agent reply, if any) — no new endpoint needed, see roundStatus() below. */
+  .history-round-status {
+    display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto;
+    font-size: var(--text-2xs); text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .history-round-status::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: 0 0 auto;
+  }
+  .history-round-status.status-queued { color: var(--ink-dim); }
+  .history-round-status.status-sending { color: var(--ink-dim); }
+  .history-round-status.status-delivered { color: var(--ink-agent); }
+  .history-round-status.status-revised { color: var(--ink-success); }
+  /* The "agent has it" state has no natural end signal (there's no "agent is done thinking"
+     event) — pulsing the dot instead of leaving it static is what actually answers the reviewer's
+     "is this stuck?" question at a glance, without fabricating a fake progress bar. */
+  .history-round-status.status-delivered::before { animation: statusPulse 1.6s ease-in-out infinite; }
+  @keyframes statusPulse {
+    0%, 100% { opacity: 1; } 50% { opacity: 0.35; }
   }
   .history-items { display: flex; flex-direction: column; gap: var(--space-1); }
   .history-item {
@@ -605,6 +629,38 @@ export function renderReviewShell(hash: string): string {
     historyLabel.textContent = label;
   }
 
+  // Issue #76: once a round is fully delivered there's no real "percent done" to show — the only
+  // honest signal is "the agent has it and hasn't replied yet". A single static "Agent has it"
+  // label reads the same whether that's been true for two seconds or twenty minutes, which is
+  // exactly the "can't tell working from stuck" complaint the issue opened with. Rotating through
+  // a word bank (picked deterministically per round, below) at least keeps the label feeling
+  // alive tick to tick instead of static text a reviewer stops trusting is still updating.
+  var WORKING_VERBS = [
+    'Pondering', 'Untangling', 'Noodling', 'Reworking', 'Sketching', 'Threading',
+    'Polishing', 'Wrangling', 'Tinkering', 'Marinating', 'Brewing'
+  ];
+
+  /**
+   * Issue #76: derives a round's status purely from data readSessionHistory already returns —
+   * no new endpoint, no CLI-side "I'm working on it" heartbeat to keep alive. deliveredAt is
+   * set server-side the instant an inkloop poll call claims a round (see feedback-store.ts's
+   * takePendingFeedback), so "every item delivered, no reply yet" is as close as this shell can
+   * get to "agent has it" without inventing a signal the CLI doesn't actually emit.
+   */
+  function roundStatus(round) {
+    if (round.reply) return { key: 'revised', label: 'Revised' };
+    var roundItems = round.items || [];
+    var allDelivered = roundItems.length > 0 && roundItems.every(function (item) { return Boolean(item.deliveredAt); });
+    if (allDelivered) {
+      // round.round is a stable, server-assigned integer (see FeedbackItem.round's docstring), so
+      // this picks the same verb for the same round on every re-render instead of flickering on
+      // each history refresh — "random-looking" across rounds, not literally Math.random().
+      var verb = WORKING_VERBS[round.round % WORKING_VERBS.length];
+      return { key: 'delivered', label: verb + '…' };
+    }
+    return { key: 'queued', label: 'Queued' };
+  }
+
   // Factored out of renderHistory so the optimistic-send path below (issue #63) can render the
   // exact same markup for a round that hasn't round-tripped to the server yet.
   function roundHtml(round, pending) {
@@ -627,8 +683,11 @@ export function renderReviewShell(hash: string): string {
       ? '<div class="history-reply"><div class="history-reply-label">Agent revised</div>'
         + '<div class="history-reply-message">' + escapeHtml(round.reply.message) + '</div></div>'
       : '';
+    var status = pending ? { key: 'sending', label: 'Sending…' } : roundStatus(round);
+    var statusHtml = '<span class="history-round-status status-' + status.key + '">'
+      + escapeHtml(status.label) + '</span>';
     return '<div class="history-round' + (pending ? ' pending' : '') + '">'
-      + '<div class="history-round-label">Round ' + round.round + '</div>'
+      + '<div class="history-round-label"><span>Round ' + round.round + '</span>' + statusHtml + '</div>'
       + '<div class="history-items">' + itemsHtml + '</div>' + replyHtml + '</div>';
   }
 
