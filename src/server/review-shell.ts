@@ -366,7 +366,11 @@ export function renderReviewShell(hash: string): string {
     padding: var(--space-3) var(--space-4); border-top: 1px solid var(--ink-border);
   }
   .composer-row textarea {
-    resize: vertical; min-height: 36px; max-height: 160px;
+    /* min-height fits ~4 visible lines, rather than the single-line-ish 36px it used to default
+       to - a reviewer writing more than a short note shouldn't immediately have to fight the
+       resize handle just to see what they've typed. (92px rendered closer to 5 lines in practice
+       than the line-height arithmetic suggested - tuned down from there instead.) */
+    resize: vertical; min-height: 74px; max-height: 220px; line-height: 1.4;
     background: #101014; color: var(--ink-text); border: 1px solid var(--ink-border);
     border-radius: var(--radius-sm); padding: var(--space-2); font: inherit;
     transition: border-color 0.15s var(--ease-out), box-shadow 0.15s var(--ease-out);
@@ -451,7 +455,7 @@ export function renderReviewShell(hash: string): string {
     .thread { flex-direction: row; overflow-x: auto; overflow-y: visible; max-height: none; }
     .pill { flex: 0 0 auto; max-width: 260px; min-width: 120px; }
     .composer-row { flex-direction: row; align-items: flex-start; }
-    .composer-row textarea { flex: 1; max-height: 120px; }
+    .composer-row textarea { flex: 1; max-height: 160px; }
     .composer-row button { align-self: stretch; }
   }
 
@@ -595,7 +599,16 @@ export function renderReviewShell(hash: string): string {
 
   function render() {
     if (items.length === 0) {
-      thread.innerHTML = '<div class="thread-empty">No annotations queued yet — select an element, select text, or write a note below.</div>';
+      // The onboarding-style hint ("select an element, select text, or write a note below") only
+      // earns its place before the reviewer has ever sent anything - once a session has real
+      // history (any round, ever), they already know how the composer works, and re-showing the
+      // same instructional copy every time the queue happens to empty out again just reads as
+      // noise. lastHistory is declared further down but hoisted (var) and already populated by
+      // the time render() is ever called - see the bottom of this script.
+      var hasHistory = (lastHistory.rounds || []).length > 0;
+      thread.innerHTML = hasHistory
+        ? ''
+        : '<div class="thread-empty">No annotations queued yet — select an element, select text, or write a note below.</div>';
     } else {
       thread.innerHTML = items.map(function (item) {
         var quote = item.target && item.target.quote
@@ -745,14 +758,20 @@ export function renderReviewShell(hash: string): string {
 
     if (rounds.length === 0) {
       historyPanel.innerHTML = '<div class="history-empty">No rounds sent yet.</div>';
-      return;
+    } else {
+      historyPanel.innerHTML = rounds.map(function (round) { return roundHtml(round, false); }).join('');
+      // Was already at (or near) the bottom - follow new content down. Otherwise, put the
+      // reviewer back exactly where they were reading rather than wherever the DOM replacement
+      // happened to leave the scroll position.
+      historyPanel.scrollTop = wasNearBottom ? historyPanel.scrollHeight : prevScrollTop;
     }
 
-    historyPanel.innerHTML = rounds.map(function (round) { return roundHtml(round, false); }).join('');
-    // Was already at (or near) the bottom - follow new content down. Otherwise, put the reviewer
-    // back exactly where they were reading rather than wherever the DOM replacement happened to
-    // leave the scroll position.
-    historyPanel.scrollTop = wasNearBottom ? historyPanel.scrollHeight : prevScrollTop;
+    // render()'s empty-queue branch decides whether to show the "select an element…" onboarding
+    // hint based on lastHistory, which this function just updated above - without re-running it
+    // here, a queue that was already empty before this round's Send resolved would go on showing
+    // the onboarding hint forever after, since nothing else re-evaluates it once the queue itself
+    // stops changing.
+    render();
   }
 
   /**
@@ -1043,7 +1062,9 @@ export function renderReviewShell(hash: string): string {
     } else if (data.type === 'inkloop:sent') {
       pendingSendItems = null;
       resetSendButton();
-      setStatus('Sent.', 'success');
+      // No "Sent." status line here (issue #76 follow-up) - the round-status badge that lands in
+      // the history panel a moment later (via fetchHistory below) already says as much, and
+      // outlives this transient line anyway once the reviewer looks away and back.
       fetchHistory();
     } else if (data.type === 'inkloop:send-error') {
       // Roll back the optimistic update above: put the unsent items back in the thread and drop

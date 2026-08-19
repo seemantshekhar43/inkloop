@@ -461,3 +461,32 @@ void test("issue #76 follow-up: the status pill is hidden once a round has a rep
     /var statusHtml = status\.key === 'revised'\s*\n\s*\? ''/,
   );
 });
+
+void test("issue #76 follow-up: the empty-queue onboarding hint only shows before the session has ever had history", () => {
+  const html = renderReviewShell(HASH);
+  const renderFnMatch = html.match(/function render\(\) \{[\s\S]*?\n {4}\} else \{/);
+  assert.ok(renderFnMatch, "expected to find render()'s empty-queue branch");
+  const body = renderFnMatch[0];
+  assert.match(body, /var hasHistory = \(lastHistory\.rounds \|\| \[\]\)\.length > 0;/);
+  assert.match(body, /thread\.innerHTML = hasHistory\s*\n\s*\? ''/);
+});
+
+void test("the composer textarea defaults to roughly 4 visible lines, not 1-2", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /min-height: 74px; max-height: 220px; line-height: 1\.4;/);
+});
+
+void test("issue #76 follow-up: renderHistory re-runs render() so the onboarding hint clears once a send resolves, not just on the next queue change", () => {
+  const html = renderReviewShell(HASH);
+  const renderHistoryMatch = html.match(/function renderHistory\(history\) \{[\s\S]*?\n {2}\}/);
+  assert.ok(renderHistoryMatch, "expected to find renderHistory()");
+  assert.match(renderHistoryMatch[0], /render\(\);\s*\n {2}\}/);
+});
+
+void test("issue #76 follow-up: no separate 'Sent.' status line on a successful send - the round-status badge already says so", () => {
+  const html = renderReviewShell(HASH);
+  const sentHandlerMatch = html.match(/data\.type === 'inkloop:sent'\) \{[\s\S]*?\} else if \(data\.type === 'inkloop:send-error'\)/);
+  assert.ok(sentHandlerMatch, "expected to find the inkloop:sent handler");
+  assert.doesNotMatch(sentHandlerMatch[0], /setStatus\('Sent\.'/);
+  assert.match(sentHandlerMatch[0], /fetchHistory\(\);/);
+});
