@@ -239,7 +239,29 @@
   let pickingElement = false;
 
   /**
-   * Toggles picking mode and its visible side effects: a crosshair cursor on the artifact so
+   * Issue #42 follow-up: the OS-default "crosshair" cursor (a bare black "+") reads as generic
+   * browser chrome, not something inkloop drew on purpose, and a target-reticle replacement
+   * (tried first) still read as the same crosshair shape just recolored. A small comment-bubble
+   * glyph instead says "click to annotate" on its own terms — same violet accent used everywhere
+   * else a pick is in progress (the highlight outline below, the review shell's own "Sidenote"
+   * toggle), with a dark outline so it stays legible over light-background artifacts too. Hotspot
+   * sits at the tip of the bubble's tail, the same "this corner is where the click lands"
+   * convention comment-cursor patterns elsewhere (Figma, Notion) use. Data URI, not a network
+   * asset — matches the rest of this SDK's zero-fetch constraint. Falls back to "crosshair" for
+   * the rare browser that rejects the custom cursor image outright.
+   */
+  const PICK_CURSOR_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">' +
+    '<path d="M4 3.5 L4 15 L8.2 15 L11 19 L11 15 L20 15 L20 3.5 Z" ' +
+    'fill="#6f5bff" stroke="#0b0b0f" stroke-width="1.4" stroke-linejoin="round"/>' +
+    '<circle cx="8.2" cy="9.2" r="1.1" fill="#f4f2ff"/>' +
+    '<circle cx="12" cy="9.2" r="1.1" fill="#f4f2ff"/>' +
+    '<circle cx="15.8" cy="9.2" r="1.1" fill="#f4f2ff"/>' +
+    "</svg>";
+  const PICK_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(PICK_CURSOR_SVG)}") 11 19, crosshair`;
+
+  /**
+   * Toggles picking mode and its visible side effects: a custom reticle cursor on the artifact so
    * it's obvious a click will select rather than click through, and a postMessage telling the
    * review shell the real current state. The shell used to guess this optimistically from its
    * own toggle button clicks alone, which drifted out of sync as soon as a pick completed
@@ -249,7 +271,7 @@
    */
   function setPickingElement(value: boolean): void {
     pickingElement = value;
-    document.documentElement.style.cursor = value ? "crosshair" : "";
+    document.documentElement.style.cursor = value ? PICK_CURSOR : "";
     if (!value) highlight.classList.add("inkloop-hidden");
     postToParent({ type: "inkloop:picking", active: value });
   }

@@ -32,9 +32,15 @@ export function renderReviewShell(hash: string): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b0b0f">
 <title>inkloop review</title>
 <style>
   :root {
+    /* This shell only ever ships a dark palette (no light-mode variant to switch to) - telling
+       the browser that up front means its own UI (form-control chrome, scrollbars on platforms
+       that don't respect the custom ::-webkit-scrollbar-* rules above) matches instead of
+       defaulting to a light theme that would clash. */
+    color-scheme: dark;
     --ink-bg: #0b0b0f;
     --ink-bg-glow: radial-gradient(1200px 480px at 12% -10%, rgba(111, 91, 255, 0.16), transparent 60%),
       radial-gradient(900px 420px at 100% 0%, rgba(232, 165, 60, 0.06), transparent 55%);
@@ -83,6 +89,11 @@ export function renderReviewShell(hash: string): string {
     --shadow-glow: 0 0 0 1px rgba(111, 91, 255, 0.28), 0 4px 16px rgba(111, 91, 255, 0.18);
   }
   * { box-sizing: border-box; }
+  /* The bottom-dock breakpoint (#43) makes every button here a touch target on mobile: skip the
+     ~300ms tap delay browsers otherwise reserve for double-tap-to-zoom detection, and replace the
+     default grey tap-highlight flash with something that matches this shell's own :active states
+     (transform: scale) instead of clashing with them. */
+  button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
   html, body {
     margin: 0; height: 100%;
     /* Matches axi.md's own mono stack (kunchenguid-design-system's --font-mono) so the two share
@@ -208,6 +219,10 @@ export function renderReviewShell(hash: string): string {
   .history-panel {
     flex: 1 1 auto; display: flex; flex-direction: column; gap: var(--space-3);
     overflow-y: auto; min-height: 80px; padding: 0 var(--space-4) var(--space-3);
+    /* Below ~900px the dock becomes a bottom drawer (see the media query further down) sitting
+       right above the artifact iframe — without this, scrolling past either end of the history
+       list chains into scrolling the page/iframe behind it. */
+    overscroll-behavior: contain;
   }
   .history-empty { color: var(--ink-dim); font-size: var(--text-sm); }
   .history-round { display: flex; flex-direction: column; gap: var(--space-2); }
@@ -402,9 +417,9 @@ export function renderReviewShell(hash: string): string {
   </button>
   <button type="button" class="end-session" id="end-btn">End session</button>
 </header>
-<div class="picking-hint" id="picking-hint">Click an element in the artifact to annotate it — click “Stop Sidenote” again to stop.</div>
-<div class="ended-banner" id="ended-banner">Session ended. Run <code>inkloop &lt;file&gt; --reopen</code> to resume review.</div>
-<div class="tab-banner" id="tab-banner">This session may be open in another tab — annotations from both could interleave.</div>
+<div class="picking-hint" id="picking-hint" role="status" aria-live="polite">Click an element in the artifact to annotate it — click “Stop Sidenote” again to stop.</div>
+<div class="ended-banner" id="ended-banner" role="status" aria-live="polite">Session ended. Run <code>inkloop &lt;file&gt; --reopen</code> to resume review.</div>
+<div class="tab-banner" id="tab-banner" role="status" aria-live="polite">This session may be open in another tab — annotations from both could interleave.</div>
 <div class="content">
   <main>
     <iframe id="artifact-frame" src="/session/${hash}/artifact" title="artifact preview"></iframe>
@@ -416,10 +431,10 @@ export function renderReviewShell(hash: string): string {
       <div class="thread-empty">No annotations queued yet — select an element, select text, or write a note below.</div>
     </div>
     <div class="composer-row">
-      <textarea id="composer" placeholder="Write a note to agent…"></textarea>
+      <textarea id="composer" placeholder="Write a note to agent…" aria-label="Note to agent"></textarea>
       <button type="button" id="send-btn" disabled>Send</button>
     </div>
-    <div class="status" id="status"></div>
+    <div class="status" id="status" role="status" aria-live="polite"></div>
   </aside>
 </div>
 <div class="modal-overlay" id="end-modal-overlay">

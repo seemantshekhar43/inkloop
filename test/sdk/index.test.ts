@@ -101,6 +101,32 @@ void test("issue #54: hover-highlight and re-picking are suspended while the com
   assert.ok(guardOccurrences && guardOccurrences.length >= 2);
 });
 
+void test("issue #42 follow-up: the pick cursor is a custom comment-bubble glyph, not the OS crosshair, with a crosshair fallback", () => {
+  assert.match(sdkSource, /const PICK_CURSOR_SVG =/);
+  // Falls back to "crosshair" (not e.g. "auto") for browsers that reject the custom cursor image.
+  assert.match(sdkSource, /const PICK_CURSOR = `url\("data:image\/svg\+xml,[^`]+"\) \d+ \d+, crosshair`;/);
+  assert.match(sdkSource, /document\.documentElement\.style\.cursor = value \? PICK_CURSOR : "";/);
+});
+
+void test("no-mistakes(review): the pick cursor's hotspot lands on the tip of the bubble's tail, not the bubble body", () => {
+  // The SVG path's tail tip is the "M4 3.5 L4 15 L8.2 15 L11 19 L11 15 ..." vertex at (11, 19) -
+  // the same "this corner is where the click lands" convention comment-cursor patterns elsewhere
+  // (Figma, Notion) use. The cursor's own hotspot offset (the two numbers before ", crosshair")
+  // must match that vertex, not some other point on the glyph (e.g. its top-left origin).
+  const svgMatch = sdkSource.match(/const PICK_CURSOR_SVG =([\s\S]*?);\s*\n\s*const PICK_CURSOR/);
+  assert.ok(svgMatch, "expected to find the PICK_CURSOR_SVG declaration");
+  const tailTipMatch = svgMatch[1].match(/L(\d+(?:\.\d+)?) (\d+(?:\.\d+)?) L\1 \d/);
+  assert.ok(tailTipMatch, "expected to find the tail-tip vertex in the SVG path data");
+  const [, tailTipX, tailTipY] = tailTipMatch;
+
+  const hotspotMatch = sdkSource.match(/PICK_CURSOR_SVG\)}"\) (\d+) (\d+), crosshair`;/);
+  assert.ok(hotspotMatch, "expected to find the cursor hotspot offset");
+  const [, hotspotX, hotspotY] = hotspotMatch;
+
+  assert.equal(hotspotX, tailTipX, "cursor hotspot x should match the bubble tail tip");
+  assert.equal(hotspotY, tailTipY, "cursor hotspot y should match the bubble tail tip");
+});
+
 void test("send-error echoes the SDK's own current queue back to the shell", () => {
   // The shell's optimistic-send rollback restores `items` from this message, not from its own
   // pre-fold snapshot - so a POST /feedback failure must hand back the queue's true state
