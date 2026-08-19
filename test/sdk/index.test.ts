@@ -138,3 +138,65 @@ void test("send-error echoes the SDK's own current queue back to the shell", () 
   const messageBody = sdkSource.slice(sendErrorIndex, messageEnd);
   assert.match(messageBody, /items:\s*queue/);
 });
+
+void test("issue #73: suggestions never trigger a network call, agent-embedded or heuristic", () => {
+  // The deliberate decision from the issue's open question: no inkloop-side LLM call for this,
+  // in either tier - not the agent-embedded read, not the DOM-heuristic fallback.
+  assert.match(sdkSource, /function computeSuggestions/);
+  assert.match(sdkSource, /function readEmbeddedSuggestions/);
+  assert.match(sdkSource, /function computeHeuristicSuggestions/);
+  for (const fnName of ["computeSuggestions", "readEmbeddedSuggestions", "computeHeuristicSuggestions"]) {
+    const fnStart = sdkSource.indexOf(`function ${fnName}`);
+    const fnEnd = sdkSource.indexOf("\n  }", fnStart);
+    const fnBody = sdkSource.slice(fnStart, fnEnd);
+    assert.doesNotMatch(fnBody, /fetch\(/, `expected ${fnName} not to call fetch()`);
+  }
+});
+
+void test("issue #73: agent-embedded suggestions (read from the artifact's own DOM) take priority over the heuristic fallback", () => {
+  // Matches the AGENTS.md-documented convention: a <script type="application/json"
+  // id="inkloop-suggestions"> tag any artifact can include on its own, inert to a browser that
+  // doesn't know to look for it - same "no inkloop support needed" pattern as the Mermaid example.
+  assert.match(sdkSource, /document\.getElementById\("inkloop-suggestions"\)/);
+  assert.match(sdkSource, /JSON\.parse\(el\.textContent/);
+  assert.match(
+    sdkSource,
+    /function computeSuggestions\(\)[\s\S]*?return readEmbeddedSuggestions\(\) \?\? computeHeuristicSuggestions\(\);/,
+  );
+});
+
+void test("issue #73: embedded suggestions are validated and capped before use", () => {
+  const fnStart = sdkSource.indexOf("function readEmbeddedSuggestions");
+  const fnEnd = sdkSource.indexOf("\n  }", fnStart);
+  const fnBody = sdkSource.slice(fnStart, fnEnd);
+  // Malformed JSON, a non-array, or non-string entries must not reach the review shell as-is.
+  assert.match(fnBody, /catch/);
+  assert.match(fnBody, /Array\.isArray\(parsed\)/);
+  assert.match(fnBody, /typeof item === "string"/);
+  assert.match(fnBody, /slice\(0, MAX_SUGGESTIONS\)/);
+});
+
+void test("issue #73: suggestions are posted to the parent before inkloop:ready", () => {
+  const suggestionsIndex = sdkSource.indexOf('type: "inkloop:suggestions"');
+  const readyIndex = sdkSource.indexOf('type: "inkloop:ready"');
+  assert.ok(suggestionsIndex >= 0, "expected an inkloop:suggestions message");
+  assert.ok(readyIndex >= 0, "expected an inkloop:ready message");
+  assert.ok(
+    suggestionsIndex < readyIndex,
+    "suggestions should be posted no later than the ready signal that reveals them",
+  );
+  assert.match(sdkSource, /prompts:\s*computeSuggestions\(\)/);
+});
+
+void test("issue #73: the heuristic fallback looks for headings, missing alt text, forms, and long paragraphs", () => {
+  const fnStart = sdkSource.indexOf("function computeHeuristicSuggestions");
+  const fnEnd = sdkSource.indexOf("\n  }", fnStart);
+  const fnBody = sdkSource.slice(fnStart, fnEnd);
+  assert.match(fnBody, /querySelectorAll\("h1, h2, h3"\)/);
+  assert.match(fnBody, /querySelectorAll\("img"\)/);
+  assert.match(fnBody, /getAttribute\("alt"\)/);
+  assert.match(fnBody, /querySelectorAll\("form"\)/);
+  assert.match(fnBody, /querySelectorAll\("p"\)/);
+  // Caps out at MAX_SUGGESTIONS so the shell never has to truncate a longer list itself.
+  assert.match(fnBody, /suggestions\.slice\(0, MAX_SUGGESTIONS\)/);
+});

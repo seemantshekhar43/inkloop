@@ -268,6 +268,34 @@ export function renderReviewShell(hash: string): string {
   }
   .thread-empty { color: var(--ink-dim); font-size: var(--text-sm); padding: var(--space-1) 0; }
   .thread-empty::before { content: "› "; color: var(--ink-accent); }
+  /* Issue #73: contextual starter prompts derived from the loaded artifact, offered instead of a
+     blank composer on first open — hidden entirely once the session has a sent round (see
+     renderSuggestions' hasHistory check), so returning reviewers with real history never see
+     stale hints crowd the panel. */
+  .suggestions {
+    display: none; flex-direction: column; gap: var(--space-2);
+    padding: var(--space-3) var(--space-4) 0;
+  }
+  .suggestions.visible { display: flex; }
+  .suggestions-label {
+    font-size: var(--text-xs); color: var(--ink-dim); text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .suggestion-chip {
+    position: relative; border: 1px solid var(--ink-border); border-radius: var(--radius-md);
+    background: var(--ink-panel-raised); color: var(--ink-text);
+    padding: var(--space-2) 26px var(--space-2) var(--space-3);
+    font-size: var(--text-sm); line-height: 1.4; cursor: pointer;
+    transition: border-color 0.15s var(--ease-out), box-shadow 0.15s var(--ease-out);
+  }
+  .suggestion-chip:hover, .suggestion-chip:focus-visible {
+    border-color: var(--ink-accent); box-shadow: var(--shadow-glow);
+  }
+  .suggestion-chip-remove {
+    position: absolute; top: 4px; right: 4px; width: 18px; height: 18px;
+    appearance: none; border: 0; border-radius: var(--radius-sm); background: transparent;
+    color: var(--ink-dim); font: inherit; line-height: 1; cursor: pointer;
+  }
+  .suggestion-chip-remove:hover { background: var(--ink-border); color: var(--ink-text); }
   .pill {
     position: relative; border: 1px solid var(--ink-border); border-radius: var(--radius-md);
     padding: var(--space-2) var(--space-3); padding-right: 26px;
@@ -430,6 +458,7 @@ export function renderReviewShell(hash: string): string {
     <div class="thread" id="thread">
       <div class="thread-empty">No annotations queued yet — select an element, select text, or write a note below.</div>
     </div>
+    <div class="suggestions" id="suggestions"></div>
     <div class="composer-row">
       <textarea id="composer" placeholder="Write a note to agent…" aria-label="Note to agent"></textarea>
       <button type="button" id="send-btn" disabled>Send</button>
@@ -462,10 +491,15 @@ export function renderReviewShell(hash: string): string {
   var statusEl = document.getElementById('status');
   var historyPanel = document.getElementById('history-panel');
   var historyLabel = document.getElementById('history-label');
+  var suggestionsEl = document.getElementById('suggestions');
   var endModalOverlay = document.getElementById('end-modal-overlay');
   var endModalCancel = document.getElementById('end-modal-cancel');
   var endModalConfirm = document.getElementById('end-modal-confirm');
   var picking = false;
+  // Issue #73: candidate starter prompts from the SDK's DOM heuristics over the currently-loaded
+  // artifact. Recomputed by the SDK on every load (including live reloads), but only ever shown
+  // while this session's history is still empty — see renderSuggestions.
+  var suggestions = [];
   var pickingHintTimer;
   var pickingHintFadeTimer;
   var items = [];
@@ -602,6 +636,7 @@ export function renderReviewShell(hash: string): string {
     lastHistory = history || lastHistory;
     var rounds = lastHistory.rounds || [];
     updateHistoryLabel();
+    renderSuggestions();
 
     if (rounds.length === 0) {
       historyPanel.innerHTML = '<div class="history-empty">No rounds sent yet.</div>';
@@ -610,6 +645,62 @@ export function renderReviewShell(hash: string): string {
 
     historyPanel.innerHTML = rounds.map(function (round) { return roundHtml(round, false); }).join('');
   }
+
+  /**
+   * Issue #73: renders the SDK's DOM-heuristic starter prompts as dismissible chips above the
+   * composer, but only while this session has no sent rounds yet — once a reviewer has sent real
+   * feedback, generic "here's something you might ask" hints have served their purpose and would
+   * just crowd a panel that now has actual history to show. Re-evaluated on every renderHistory
+   * call (the same trigger that updates lastHistory.rounds), not just when a new suggestions
+   * message arrives, so sending the first round hides the block immediately rather than waiting
+   * for the next artifact reload.
+   */
+  function renderSuggestions() {
+    var hasHistory = (lastHistory.rounds || []).length > 0;
+    if (hasHistory || suggestions.length === 0) {
+      suggestionsEl.classList.remove('visible');
+      suggestionsEl.innerHTML = '';
+      return;
+    }
+    suggestionsEl.classList.add('visible');
+    suggestionsEl.innerHTML = '<div class="suggestions-label">Suggested</div>'
+      + suggestions.map(function (text, i) {
+        return '<div class="suggestion-chip" data-index="' + i + '" role="button" tabindex="0">'
+          + '<button type="button" class="suggestion-chip-remove" data-index="' + i + '" aria-label="Dismiss suggestion">×</button>'
+          + escapeHtml(text) + '</div>';
+      }).join('');
+  }
+
+  // Clicking a chip populates the composer (not auto-send, so the reviewer can edit first);
+  // clicking its × dismisses just that one suggestion. Delegated on the container since the chips
+  // are rebuilt wholesale on every renderSuggestions call.
+  suggestionsEl.addEventListener('click', function (event) {
+    var target = event.target;
+    var removeBtn = target && target.closest ? target.closest('.suggestion-chip-remove') : null;
+    if (removeBtn) {
+      var removeIndex = Number(removeBtn.getAttribute('data-index'));
+      suggestions.splice(removeIndex, 1);
+      renderSuggestions();
+      return;
+    }
+    var chip = target && target.closest ? target.closest('.suggestion-chip') : null;
+    if (!chip) return;
+    var text = suggestions[Number(chip.getAttribute('data-index'))];
+    if (text === undefined) return;
+    composer.value = text;
+    updateSendButtonEnabled();
+    composer.focus();
+  });
+
+  // role="button" chips need Enter/Space to behave like the click handler above, since a <div>
+  // (unlike <button>) doesn't get that for free from the browser.
+  suggestionsEl.addEventListener('keydown', function (event) {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    var chip = event.target && event.target.closest ? event.target.closest('.suggestion-chip') : null;
+    if (!chip) return;
+    event.preventDefault();
+    chip.click();
+  });
 
   /**
    * Issue #63: paints the round being sent into the history panel the instant Send is clicked,
@@ -796,6 +887,14 @@ export function renderReviewShell(hash: string): string {
     render();
     renderPendingRound(itemsBeingSent);
 
+    // Issue #73: once a reviewer has sent anything, the "blank slate" starter prompts have
+    // served their purpose — clear them right away on click rather than waiting for
+    // renderHistory's hasHistory check to catch up after the round-trip resolves. Not restored on
+    // a failed send (below): the reviewer has already engaged with the composer by that point, so
+    // there's no going back to "first open" state.
+    suggestions = [];
+    renderSuggestions();
+
     sendBtn.disabled = true;
     sendBtn.classList.add('sending');
     sendBtn.textContent = 'Sending…';
@@ -847,6 +946,12 @@ export function renderReviewShell(hash: string): string {
       setStatus('Failed to send: ' + data.message, 'error');
     } else if (data.type === 'inkloop:scroll') {
       lastScrollY = data.scrollY || 0;
+    } else if (data.type === 'inkloop:suggestions') {
+      // Issue #73: replaces (not merges with) any prior batch — a fresh artifact load means a
+      // fresh set of candidates, and stale ones from a since-revised artifact aren't worth
+      // keeping around just because a reviewer hadn't dismissed them yet.
+      suggestions = Array.isArray(data.prompts) ? data.prompts : [];
+      renderSuggestions();
     } else if (data.type === 'inkloop:ready') {
       // Fires on the iframe's very first load too (where items is [] and lastScrollY is 0, a
       // harmless no-op) as well as after every live-reload (issue #8) — the one place this

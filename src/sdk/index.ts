@@ -528,5 +528,96 @@
   }
   void checkDrift();
 
+  // ---- Suggested prompts (issue #73) ------------------------------------------------------
+  /**
+   * Contextual starter prompts for the review shell's composer, instead of a blank box on first
+   * open. Two tiers, both computed fresh on every load including live reloads (issue #8's full
+   * iframe reload re-runs this whole IIFE, so that's the natural recompute point):
+   *
+   *  1. Agent-embedded (readEmbeddedSuggestions below) — the agent that wrote this artifact is
+   *     already the one best placed to know what's worth asking about it, so this takes priority
+   *     whenever present. No inkloop-side LLM call: the same "no inkloop support needed" pattern
+   *     AGENTS.md documents for embedding a Mermaid script — a plain, inert-if-ignored
+   *     <script type="application/json"> tag any artifact can include on its own, so opening the
+   *     saved .html file directly still renders identically and no API key/network call/per-open
+   *     cost is added to inkloop's own core loop.
+   *  2. DOM heuristics (computeHeuristicSuggestions below) — a synchronous, free, local scan for
+   *     when the artifact doesn't embed its own suggestions, so a reviewer still sees *something*
+   *     rather than nothing on an artifact an agent didn't bother annotating.
+   */
+  const MAX_SUGGESTIONS = 3;
+
+  function truncateForPrompt(text: string, max: number): string {
+    const collapsed = text.trim().replace(/\s+/g, " ");
+    return collapsed.length > max ? `${collapsed.slice(0, max).trimEnd()}…` : collapsed;
+  }
+
+  function readEmbeddedSuggestions(): string[] | null {
+    const el = document.getElementById("inkloop-suggestions");
+    if (!el || el.tagName !== "SCRIPT") return null;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(el.textContent ?? "");
+    } catch {
+      return null;
+    }
+    if (!Array.isArray(parsed)) return null;
+    const cleaned = parsed
+      .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      .map((item) => truncateForPrompt(item, 140))
+      .slice(0, MAX_SUGGESTIONS);
+    return cleaned.length > 0 ? cleaned : null;
+  }
+
+  function computeHeuristicSuggestions(): string[] {
+    const body = document.body;
+    if (!body) return [];
+    const suggestions: string[] = [];
+
+    // Skip the first heading found - usually the artifact's own title, not a section worth
+    // singling out on its own.
+    const headings = Array.from(body.querySelectorAll("h1, h2, h3")).filter(
+      (el) => !isSdkNode(el) && (el.textContent ?? "").trim().length > 0,
+    );
+    const sectionHeading = headings[1] ?? headings[0];
+    if (sectionHeading) {
+      const label = truncateForPrompt(sectionHeading.textContent ?? "", 60);
+      suggestions.push(`Explain the reasoning behind the "${label}" section.`);
+    }
+
+    const badImage = Array.from(body.querySelectorAll("img")).find(
+      (img) => !isSdkNode(img) && !(img.getAttribute("alt") ?? "").trim(),
+    );
+    if (badImage) suggestions.push("Is the image missing alt text accessible to screen readers?");
+
+    const form = Array.from(body.querySelectorAll("form")).find((el) => !isSdkNode(el));
+    if (form) suggestions.push("Does the form handle validation and error states?");
+
+    const longParagraph = Array.from(body.querySelectorAll("p")).find(
+      (p) => !isSdkNode(p) && (p.textContent ?? "").trim().length > 400,
+    );
+    if (longParagraph) {
+      const label = truncateForPrompt(longParagraph.textContent ?? "", 60);
+      suggestions.push(`Can this be simplified: "${label}"?`);
+    }
+
+    const genericFallbacks = [
+      "Is this accessible (contrast, keyboard navigation, alt text)?",
+      "What's the reasoning behind the overall layout?",
+      "Any way to simplify this further?",
+    ];
+    for (const fallback of genericFallbacks) {
+      if (suggestions.length >= MAX_SUGGESTIONS) break;
+      suggestions.push(fallback);
+    }
+
+    return suggestions.slice(0, MAX_SUGGESTIONS);
+  }
+
+  function computeSuggestions(): string[] {
+    return readEmbeddedSuggestions() ?? computeHeuristicSuggestions();
+  }
+
+  postToParent({ type: "inkloop:suggestions", prompts: computeSuggestions() });
   postToParent({ type: "inkloop:ready" });
 })();
