@@ -115,7 +115,9 @@ void test("no-mistakes(review): the pick cursor's hotspot lands on the tip of th
   // must match that vertex, not some other point on the glyph (e.g. its top-left origin).
   const svgMatch = sdkSource.match(/const PICK_CURSOR_SVG =([\s\S]*?);\s*\n\s*const PICK_CURSOR/);
   assert.ok(svgMatch, "expected to find the PICK_CURSOR_SVG declaration");
-  const tailTipMatch = svgMatch[1].match(/L(\d+(?:\.\d+)?) (\d+(?:\.\d+)?) L\1 \d/);
+  const [, svgBody] = svgMatch;
+  assert.ok(svgBody, "expected a captured PICK_CURSOR_SVG body");
+  const tailTipMatch = svgBody.match(/L(\d+(?:\.\d+)?) (\d+(?:\.\d+)?) L\1 \d/);
   assert.ok(tailTipMatch, "expected to find the tail-tip vertex in the SVG path data");
   const [, tailTipX, tailTipY] = tailTipMatch;
 
