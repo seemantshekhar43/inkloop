@@ -751,6 +751,21 @@ export function renderReviewShell(hash: string): string {
 
   composer.addEventListener('input', updateSendButtonEnabled);
 
+  /**
+   * Issue #70: Enter sends (matching common chat-input convention), Shift+Enter still inserts a
+   * newline via the textarea's default behavior. Enter-to-send is a different action from the
+   * Enter-to-queue that issue #60 deliberately dropped (queuing a separate pill on Enter, which
+   * read as surprising) — this reuses the same path as clicking Send, not a queue action.
+   * Delegating to sendBtn.click() (rather than duplicating the click handler's body) means the
+   * button's own disabled state — set during an in-flight send or once the session has ended —
+   * is respected for free; a disabled button's click() is a no-op.
+   */
+  composer.addEventListener('keydown', function (event) {
+    if (event.key !== 'Enter' || event.shiftKey) return;
+    event.preventDefault();
+    sendBtn.click();
+  });
+
   thread.addEventListener('click', function (event) {
     var target = event.target;
     var removeBtn = target && target.closest ? target.closest('.pill-remove') : null;

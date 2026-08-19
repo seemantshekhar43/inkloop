@@ -168,7 +168,21 @@ void test("issue #60: Send folds the composer's current text into the same batch
 void test("issue #60: Enter-to-queue is dropped entirely, not just re-labeled", () => {
   const html = renderReviewShell(HASH);
   assert.doesNotMatch(html, /submitNote/);
-  assert.doesNotMatch(html, /composer\.addEventListener\('keydown'/);
+});
+
+void test("issue #70: Enter in the composer sends (Shift+Enter still inserts a newline)", () => {
+  const html = renderReviewShell(HASH);
+  const keydownHandlerStart = html.indexOf("composer.addEventListener('keydown'");
+  assert.ok(keydownHandlerStart >= 0);
+  const keydownHandlerEnd = html.indexOf('});', keydownHandlerStart);
+  const keydownHandlerBody = html.slice(keydownHandlerStart, keydownHandlerEnd);
+  // Shift+Enter must bail out before doing anything, leaving the textarea's default newline
+  // behavior untouched.
+  assert.match(keydownHandlerBody, /event\.key !== 'Enter' \|\| event\.shiftKey\) return;/);
+  assert.match(keydownHandlerBody, /event\.preventDefault\(\);/);
+  // Delegates to the Send button's own click handler (and its disabled guard) rather than
+  // duplicating the send logic.
+  assert.match(keydownHandlerBody, /sendBtn\.click\(\);/);
 });
 
 void test("issue #55: the picking-mode label reads as a clear call-to-action, not 'Cancel Sidenote'", () => {
