@@ -762,6 +762,7 @@ export function renderReviewShell(hash: string): string {
    */
   composer.addEventListener('keydown', function (event) {
     if (event.key !== 'Enter' || event.shiftKey) return;
+    if (event.isComposing || event.keyCode === 229) return;
     event.preventDefault();
     sendBtn.click();
   });
