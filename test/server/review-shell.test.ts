@@ -312,3 +312,68 @@ void test("issue #43 follow-up: buttons get real touch targets - no tap delay, n
   const html = renderReviewShell(HASH);
   assert.match(html, /button\s*{[^}]*touch-action:\s*manipulation;[^}]*-webkit-tap-highlight-color:\s*transparent;/);
 });
+
+void test("issue #73: renders a suggestions container above the composer", () => {
+  const html = renderReviewShell(HASH);
+  const suggestionsIndex = html.indexOf('id="suggestions"');
+  const composerRowIndex = html.indexOf('class="composer-row"');
+  assert.ok(suggestionsIndex >= 0, "expected a #suggestions element");
+  assert.ok(
+    suggestionsIndex < composerRowIndex,
+    "suggestions should render above the composer row",
+  );
+});
+
+void test("issue #73: the SDK's suggestions message is stored and rendered, not auto-shown once history exists", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /data\.type === 'inkloop:suggestions'/);
+  assert.match(html, /suggestions = Array\.isArray\(data\.prompts\) \? data\.prompts : \[\];/);
+  assert.match(html, /function renderSuggestions/);
+  const fnStart = html.indexOf("function renderSuggestions");
+  const fnEnd = html.indexOf("\n  }", fnStart);
+  const fnBody = html.slice(fnStart, fnEnd);
+  // Hidden once the session has any sent rounds, regardless of how many candidates were computed.
+  assert.match(fnBody, /var hasHistory = \(lastHistory\.rounds \|\| \[\]\)\.length > 0;/);
+  assert.match(fnBody, /if \(hasHistory \|\| suggestions\.length === 0\)/);
+  // Re-evaluated from renderHistory (the same trigger lastHistory.rounds updates on), so sending
+  // the first round hides the block immediately rather than waiting for the next artifact reload.
+  const renderHistoryStart = html.indexOf("function renderHistory");
+  const renderHistoryEnd = html.indexOf("\n  }", renderHistoryStart);
+  assert.match(html.slice(renderHistoryStart, renderHistoryEnd), /renderSuggestions\(\);/);
+});
+
+void test("issue #73: clicking a suggestion populates the composer instead of auto-sending", () => {
+  const html = renderReviewShell(HASH);
+  const listenerStart = html.indexOf("suggestionsEl.addEventListener('click'");
+  assert.ok(listenerStart >= 0, "expected a click listener on the suggestions container");
+  const listenerEnd = html.indexOf("});", listenerStart);
+  const listenerBody = html.slice(listenerStart, listenerEnd);
+  assert.match(listenerBody, /composer\.value = text;/);
+  assert.doesNotMatch(listenerBody, /postToFrame\(\{ type: 'inkloop:send' \}\)/);
+});
+
+void test("issue #73: a suggestion chip can be individually dismissed", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /class="suggestion-chip-remove"/);
+  const listenerStart = html.indexOf("suggestionsEl.addEventListener('click'");
+  const listenerEnd = html.indexOf("});", listenerStart);
+  const listenerBody = html.slice(listenerStart, listenerEnd);
+  assert.match(listenerBody, /suggestions\.splice\(removeIndex, 1\);/);
+});
+
+void test("issue #73: sending clears every suggestion immediately, not just once history refreshes", () => {
+  const html = renderReviewShell(HASH);
+  const sendHandlerStart = html.indexOf("sendBtn.addEventListener('click'");
+  const sendCallText = "postToFrame({ type: 'inkloop:send' });";
+  const sendCallIndex = html.indexOf(sendCallText, sendHandlerStart);
+  const sendHandlerEnd = html.indexOf("});", sendCallIndex + sendCallText.length);
+  const sendHandlerBody = html.slice(sendHandlerStart, sendHandlerEnd);
+  assert.match(sendHandlerBody, /suggestions = \[\];/);
+  assert.match(sendHandlerBody, /renderSuggestions\(\);/);
+  // Must clear suggestions before the optimistic-send items are cleared/rendered ends and the
+  // network call is kicked off - not deferred to the async 'inkloop:sent'/history refresh path.
+  assert.ok(
+    sendHandlerBody.indexOf("suggestions = [];") < sendCallIndex - sendHandlerStart,
+    "suggestions should clear synchronously within the click handler, before the send is posted",
+  );
+});

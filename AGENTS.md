@@ -50,6 +50,28 @@ attribution/fee obligations beyond the license notice bundled in the library), a
 loaded from the artifact's own script rather than from inkloop's `package.json`, it never
 becomes an inkloop dependency or license obligation either way. See issue #33.
 
+## Seeding suggested reviewer prompts (no inkloop support needed, issue #73)
+
+The review shell offers a few starter prompts above the composer on first open, instead of a
+blank box. An artifact can seed these itself, the same "no inkloop support needed" pattern as the
+Mermaid example above: a plain
+```html
+<script type="application/json" id="inkloop-suggestions">
+  ["Explain the reasoning behind the pricing table.", "Is the hero image accessible?"]
+</script>
+```
+tag anywhere in the artifact's `<body>`, inert to any browser that doesn't know to look for it, so
+opening the saved `.html` file directly still renders identically. The injected SDK
+(`src/sdk/index.ts`) reads it (up to 3 strings, each capped in length) and hands it to the review
+shell; if it's absent, malformed, or empty, the SDK falls back to its own DOM heuristics
+(missing alt text, a long paragraph, a section heading, etc.) instead of showing nothing.
+
+Deliberately *not* an inkloop-side LLM call: the agent that just wrote the artifact is already the
+one best placed to know what's worth asking about it, and generating the prompts itself avoids
+adding inkloop's first cloud dependency, an API key requirement, a per-open cost, and a privacy
+question (the artifact's content leaving the browser) — all for a call whose output the artifact's
+own author could just... write down while it's already there.
+
 ## Dev workflow
 
 ```
