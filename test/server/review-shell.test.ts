@@ -265,3 +265,36 @@ void test("issue #42 follow-up: prefers-reduced-motion collapses the entrance/pr
   assert.match(mediaBody, /transition-duration:\s*0\.01ms\s*!important/);
   assert.match(mediaBody, /scroll-behavior:\s*auto\s*!important/);
 });
+
+void test("issue #42 follow-up: dark-only color-scheme is declared on :root and matched by a theme-color meta", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /<meta name="theme-color" content="#0b0b0f">/);
+  assert.match(html, /:root\s*{[^}]*color-scheme:\s*dark;/s);
+});
+
+void test("issue #42 follow-up: the composer textarea has an aria-label since its placeholder alone isn't a reliable accessible name", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /<textarea id="composer"[^>]*aria-label="Note to agent"[^>]*>/);
+});
+
+void test("issue #42 follow-up: transient banners and the send status line announce via role=status/aria-live=polite", () => {
+  const html = renderReviewShell(HASH);
+  for (const id of ["picking-hint", "ended-banner", "tab-banner", "status"]) {
+    const re = new RegExp(`id="${id}"[^>]*role="status"[^>]*aria-live="polite"`);
+    assert.match(html, re, `expected #${id} to carry role=status aria-live=polite`);
+  }
+});
+
+void test("issue #42 follow-up: the history panel contains overscroll so scrolling past either end doesn't chain into the page/iframe behind it", () => {
+  const html = renderReviewShell(HASH);
+  const panelStart = html.indexOf(".history-panel {");
+  assert.ok(panelStart >= 0, "expected a .history-panel rule");
+  const panelEnd = html.indexOf("}", panelStart);
+  const panelBody = html.slice(panelStart, panelEnd);
+  assert.match(panelBody, /overscroll-behavior:\s*contain;/);
+});
+
+void test("issue #43 follow-up: buttons get real touch targets - no tap delay, no default grey tap-highlight flash", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /button\s*{[^}]*touch-action:\s*manipulation;[^}]*-webkit-tap-highlight-color:\s*transparent;/);
+});
