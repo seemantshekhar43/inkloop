@@ -417,3 +417,47 @@ void test("issue #76: the working-status verb bank is single-word and rotates de
   // same round must not flicker to a different verb.
   assert.match(html, /WORKING_VERBS\[round\.round % WORKING_VERBS\.length\]/);
 });
+
+void test("issue #78: renderHistory follows new content to the bottom only when the reviewer was already near it, otherwise restores their exact scroll position", () => {
+  const html = renderReviewShell(HASH);
+  const renderHistoryMatch = html.match(/function renderHistory\(history\) \{[\s\S]*?\n {2}\}/);
+  assert.ok(renderHistoryMatch, "expected to find renderHistory()");
+  const body = renderHistoryMatch[0];
+  // Both captured before the innerHTML rewrite, which tears down the old nodes and doesn't
+  // reliably preserve scrollTop on its own (may reset to 0, or land somewhere arbitrary via the
+  // browser's scroll-anchoring guessing at a similar node in the new markup).
+  const wasNearBottomAt = body.indexOf("var wasNearBottom = isHistoryPanelNearBottom();");
+  const prevScrollTopAt = body.indexOf("var prevScrollTop = historyPanel.scrollTop;");
+  const innerHtmlAt = body.indexOf("historyPanel.innerHTML = rounds.map");
+  assert.ok(wasNearBottomAt >= 0, "expected wasNearBottom to be captured");
+  assert.ok(prevScrollTopAt >= 0, "expected prevScrollTop to be captured");
+  assert.ok(innerHtmlAt > wasNearBottomAt, "expected the near-bottom check before the innerHTML rewrite");
+  assert.ok(innerHtmlAt > prevScrollTopAt, "expected prevScrollTop to be captured before the innerHTML rewrite");
+  // Explicitly restored after, rather than left to however the DOM replacement happened to leave it.
+  assert.match(body, /historyPanel\.scrollTop = wasNearBottom \? historyPanel\.scrollHeight : prevScrollTop;/);
+});
+
+void test("issue #78: the optimistic pending round always scrolls into view (the reviewer just clicked Send)", () => {
+  const html = renderReviewShell(HASH);
+  const renderPendingMatch = html.match(/function renderPendingRound\(itemsForRound\) \{[\s\S]*?\n {2}\}/);
+  assert.ok(renderPendingMatch, "expected to find renderPendingRound()");
+  assert.match(renderPendingMatch[0], /scrollHistoryPanelToBottom\(\);/);
+});
+
+void test("issue #78: near-bottom detection uses the panel's own scroll metrics with slack, not an exact-zero check", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(
+    html,
+    /historyPanel\.scrollHeight - historyPanel\.scrollTop - historyPanel\.clientHeight\s*\n?\s*< HISTORY_SCROLL_BOTTOM_SLACK_PX/,
+  );
+});
+
+void test("issue #76 follow-up: the status pill is hidden once a round has a reply - the 'Agent' block already says it's done", () => {
+  const html = renderReviewShell(HASH);
+  const roundHtmlMatch = html.match(/function roundHtml\(round, pending\) \{[\s\S]*?\n {2}\}/);
+  assert.ok(roundHtmlMatch, "expected to find roundHtml()");
+  assert.match(
+    roundHtmlMatch[0],
+    /var statusHtml = status\.key === 'revised'\s*\n\s*\? ''/,
+  );
+});

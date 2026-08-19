@@ -256,6 +256,20 @@ export function renderReviewShell(hash: string): string {
   @keyframes statusPulse {
     0%, 100% { opacity: 1; } 50% { opacity: 0.35; }
   }
+  /* A moving gradient sweep across the working verb itself — reads as "still going" the same way
+     a chat app's "thinking…" shimmer does, more attention-grabbing than the pulsing dot alone
+     without going as far as a spinner (which would overstate how much progress info is actually
+     available — see roundStatus()'s docstring on why there's no real percent-done here). */
+  .history-round-status.status-delivered .status-text {
+    background: linear-gradient(90deg, var(--ink-agent) 0%, #fbe4b0 50%, var(--ink-agent) 100%);
+    background-size: 200% 100%; -webkit-background-clip: text; background-clip: text;
+    color: transparent; -webkit-text-fill-color: transparent;
+    animation: statusShimmer 1.8s linear infinite;
+  }
+  @keyframes statusShimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+  }
   .history-items { display: flex; flex-direction: column; gap: var(--space-1); }
   .history-item {
     border-left: 2px solid var(--ink-accent); background: var(--ink-accent-soft);
@@ -605,8 +619,9 @@ export function renderReviewShell(hash: string): string {
   }
 
   // ---- Round-history panel (issue #21, reflowed into the side panel by #43) -----------------
-  // Past rounds of sent annotations paired with the agent's "Agent revised" reply for that
-  // round, if any. Always visible in its own scrollable section of the side panel now — the
+  // Past rounds of sent annotations paired with the agent's reply for that round (labeled
+  // "Agent" — see roundHtml below), if any. Always visible in its own scrollable section of the
+  // side panel now — the
   // collapse/expand toggle from the bottom-dock version existed to reclaim vertical space the
   // dock was borrowing from the artifact; a fixed-width side panel doesn't borrow that space, so
   // there's nothing left to reclaim and the toggle is gone.
@@ -680,15 +695,36 @@ export function renderReviewShell(hash: string): string {
         + driftNote + '</div>';
     }).join('');
     var replyHtml = round.reply
-      ? '<div class="history-reply"><div class="history-reply-label">Agent revised</div>'
+      ? '<div class="history-reply"><div class="history-reply-label">Agent</div>'
         + '<div class="history-reply-message">' + escapeHtml(round.reply.message) + '</div></div>'
       : '';
     var status = pending ? { key: 'sending', label: 'Sending…' } : roundStatus(round);
-    var statusHtml = '<span class="history-round-status status-' + status.key + '">'
-      + escapeHtml(status.label) + '</span>';
+    // Once a round has a reply, "Agent revised" + the reply text below already says it's done -
+    // a "REVISED" pill on top of that is redundant, and across many rounds a whole history of
+    // solid-green pills would just be visual noise. The badge earns its place on rounds still
+    // in flight (queued or delivered-but-no-reply-yet), where it's the only signal available.
+    var statusHtml = status.key === 'revised'
+      ? ''
+      : '<span class="history-round-status status-' + status.key + '">'
+        + '<span class="status-text">' + escapeHtml(status.label) + '</span></span>';
     return '<div class="history-round' + (pending ? ' pending' : '') + '">'
       + '<div class="history-round-label"><span>Round ' + round.round + '</span>' + statusHtml + '</div>'
       + '<div class="history-items">' + itemsHtml + '</div>' + replyHtml + '</div>';
+  }
+
+  // Issue #78: the panel never scrolled itself, so a reviewer several rounds into a session had
+  // to manually scroll down to see the newest round (and, after #76, its live status badge) every
+  // time one landed. Only auto-scrolls when the reviewer was already at (or near) the bottom —
+  // scrolled up to reread an earlier round, a fresh round arriving shouldn't yank the view away.
+  var HISTORY_SCROLL_BOTTOM_SLACK_PX = 24;
+
+  function isHistoryPanelNearBottom() {
+    return historyPanel.scrollHeight - historyPanel.scrollTop - historyPanel.clientHeight
+      < HISTORY_SCROLL_BOTTOM_SLACK_PX;
+  }
+
+  function scrollHistoryPanelToBottom() {
+    historyPanel.scrollTop = historyPanel.scrollHeight;
   }
 
   function renderHistory(history) {
@@ -697,12 +733,26 @@ export function renderReviewShell(hash: string): string {
     updateHistoryLabel();
     renderSuggestions();
 
+    // fetchHistory() ticks alongside every reload long-poll response (~every pollTimeoutMs), not
+    // just when a round actually changed, and this rebuilds the panel wholesale every time - a
+    // full innerHTML replacement tears down the old nodes, so the browser doesn't reliably keep
+    // scrollTop where it was (it may reset to 0, or land somewhere arbitrary via scroll-anchoring
+    // guessing at a similar-looking node in the new markup). Both captured up front, before
+    // anything below can disturb them, and restored explicitly after rather than trusted to
+    // survive the replacement on their own.
+    var wasNearBottom = isHistoryPanelNearBottom();
+    var prevScrollTop = historyPanel.scrollTop;
+
     if (rounds.length === 0) {
       historyPanel.innerHTML = '<div class="history-empty">No rounds sent yet.</div>';
       return;
     }
 
     historyPanel.innerHTML = rounds.map(function (round) { return roundHtml(round, false); }).join('');
+    // Was already at (or near) the bottom - follow new content down. Otherwise, put the reviewer
+    // back exactly where they were reading rather than wherever the DOM replacement happened to
+    // leave the scroll position.
+    historyPanel.scrollTop = wasNearBottom ? historyPanel.scrollHeight : prevScrollTop;
   }
 
   /**
@@ -778,6 +828,11 @@ export function renderReviewShell(hash: string): string {
     var html = roundHtml({ round: roundNum, items: itemsForRound, reply: null }, true);
     if (historyPanel.querySelector('.history-empty')) historyPanel.innerHTML = '';
     historyPanel.insertAdjacentHTML('beforeend', html);
+    // A reviewer who just clicked Send is, by definition, engaged with the panel right now - the
+    // pending round they're about to watch resolve should always land in view, regardless of
+    // scroll position (unlike renderHistory's more conservative "only if already near bottom",
+    // used for rounds arriving from elsewhere - the agent's reply, another tab's Send).
+    scrollHistoryPanelToBottom();
   }
 
   function fetchHistory() {
