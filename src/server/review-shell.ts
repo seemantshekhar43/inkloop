@@ -696,7 +696,9 @@ export function renderReviewShell(hash: string): string {
   // (unlike <button>) doesn't get that for free from the browser.
   suggestionsEl.addEventListener('keydown', function (event) {
     if (event.key !== 'Enter' && event.key !== ' ') return;
-    var chip = event.target && event.target.closest ? event.target.closest('.suggestion-chip') : null;
+    var target = event.target;
+    if (target && target.closest && target.closest('.suggestion-chip-remove')) return;
+    var chip = target && target.closest ? target.closest('.suggestion-chip') : null;
     if (!chip) return;
     event.preventDefault();
     chip.click();
