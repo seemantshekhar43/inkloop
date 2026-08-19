@@ -258,7 +258,7 @@
     '<circle cx="12" cy="9.2" r="1.1" fill="#f4f2ff"/>' +
     '<circle cx="15.8" cy="9.2" r="1.1" fill="#f4f2ff"/>' +
     "</svg>";
-  const PICK_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(PICK_CURSOR_SVG)}") 4 3, crosshair`;
+  const PICK_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(PICK_CURSOR_SVG)}") 11 19, crosshair`;
 
   /**
    * Toggles picking mode and its visible side effects: a custom reticle cursor on the artifact so
