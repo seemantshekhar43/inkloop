@@ -1,4 +1,4 @@
-import { getStencil, listStencils } from "../../shared/stencils.js";
+import { DESIGN_BASELINE, getStencil, listStencils } from "../../shared/stencils.js";
 
 /**
  * Implements `inkloop stencil` / `inkloop stencil <id>` (issue #86, follow-up to #68): static,
@@ -17,7 +17,12 @@ export function runStencilCommand(id?: string): number {
     for (const stencil of listStencils()) {
       lines.push(`  ${stencil.id.padEnd(12)} ${stencil.title}`);
     }
-    lines.push("", "Run `inkloop stencil <id>` to expand one.");
+    lines.push(
+      "",
+      "Run `inkloop stencil <id>` to expand one - every id's output also includes `design_baseline`,",
+      "the visual-design floor to fall back on when there's no user-specified or subject-matched",
+      "design system to follow (issue #89).",
+    );
     process.stdout.write(`${lines.join("\n")}\n`);
     return 0;
   }
@@ -48,6 +53,20 @@ export function runStencilCommand(id?: string): number {
     "",
     "## loop_notes",
     ...stencil.loop_notes.map((n) => `- ${n}`),
+    "",
+    "## design_baseline",
+    "(the visual-design floor - issue #89; use only when there's no user-specified or subject-matched design system to follow instead, see its own priority order below)",
+    DESIGN_BASELINE.summary,
+    "",
+    "priority:",
+    ...DESIGN_BASELINE.priority.map((p, i) => `${i + 1}. ${p}`),
+    "",
+    `font_stack: ${DESIGN_BASELINE.font_stack}`,
+    `spacing_scale: ${DESIGN_BASELINE.spacing_scale}`,
+    "palette:",
+    ...DESIGN_BASELINE.palette.map((p) => `- ${p}`),
+    "components:",
+    ...DESIGN_BASELINE.components.map((c) => `- ${c}`),
   ];
   process.stdout.write(`${lines.join("\n")}\n`);
   return 0;

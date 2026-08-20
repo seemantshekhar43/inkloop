@@ -12,6 +12,60 @@
 export type StencilId =
   "plan" | "comparison" | "table" | "report" | "mockup" | "diagram" | "loopable";
 
+/**
+ * Cross-cutting visual-design floor (issue #89, follow-up to #86). Every stencil's `layout`/`rules`
+ * describe *structure*; none said anything about *visual* baseline quality, so an agent focused on
+ * content had no nudge toward a presentable result - simulating 10 stencil-guided artifacts end to
+ * end produced 8 with zero CSS (default browser styling). Reachable from every `inkloop stencil <id>`
+ * output (see `runStencilCommand`), not just `loopable`, since the failure mode hit table, plan,
+ * report, diagram, and comparison artifacts alike, not just mockup.
+ *
+ * Deliberately a documented floor, not a design-system generator: a small system-font stack, a small
+ * spacing scale, a neutral palette, and basic table/card/button treatment - enough that "I have no
+ * design system, what do I use" has an answer instead of silence. No runtime CSS injection: any
+ * styling has to live in the artifact's own HTML, authored by the agent, or the standalone-render
+ * invariant (AGENTS.md) breaks - opening the saved artifact directly must render identically to
+ * opening it through inkloop.
+ */
+export interface DesignBaseline {
+  /** One-line framing: why this exists and when it applies. */
+  summary: string;
+  /** Priority order for picking a design direction - checked top to bottom. */
+  priority: string[];
+  /** Fallback typography when nothing above already answered it. */
+  font_stack: string;
+  /** Fallback spacing scale when nothing above already answered it. */
+  spacing_scale: string;
+  /** Fallback neutral/accent/status color guidance when nothing above already answered it. */
+  palette: string[];
+  /** Baseline treatment for the handful of components almost every artifact needs. */
+  components: string[];
+}
+
+export const DESIGN_BASELINE: DesignBaseline = {
+  summary:
+    "Every artifact ships a real <style> block - default browser styling (serif body text, black on white, no spacing) reads as unfinished, not as a deliberate 'plain' choice. Decide the design direction before writing HTML; don't default to none.",
+  priority: [
+    "If the user asked for a specific look or named design system, use that.",
+    "Otherwise, if the artifact represents an existing app or product, match that subject's own design system - its CSS variables/theme config, component library, brand assets, or existing styled pages - even when the artifact is authored from a different repo.",
+    "Only when both come up empty, fall back to the baseline below.",
+  ],
+  font_stack:
+    "A real system-font stack for prose (e.g. -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif), or a monospace stack for code-heavy content - never leave body text on the browser's serif default.",
+  spacing_scale:
+    "A small consistent scale (e.g. 4/8/12/16/24/32px) applied to margin/padding/gap throughout, not ad hoc pixel values picked per element.",
+  palette: [
+    "One neutral page background, one neutral surface/card color a shade off it, one body-text color with at least 4.5:1 contrast against both.",
+    "One accent color used sparingly for emphasis, links, and primary actions - not applied to every heading or label.",
+    "Status colors (success/warning/error) only where the content has that semantic, paired with a non-color cue - see the table/comparison stencils' snags on color-only signaling.",
+  ],
+  components: [
+    "Cards: a border or subtle shadow plus padding, not a bare unstyled <div>.",
+    "Tables: a visually distinct header row (weight/background) and row separation (dividers or zebra striping) for scanability.",
+    "Buttons/links: a visible hover/focus state, not raw unstyled <a>/<button> defaults.",
+  ],
+};
+
 export interface Stencil {
   id: StencilId;
   title: string;
@@ -166,6 +220,7 @@ const STENCILS: readonly Stencil[] = [
       "Semantic sectioning: real heading elements and landmark structure, not visually-styled divs - both for accessibility and because stable anchors depend on real structure.",
       "Every section a reviewer might comment on needs a stable identifying attribute (id, or a consistent selector path) that survives edits to unrelated sections.",
       "The artifact must render identically whether opened standalone (no inkloop server) or through `inkloop <file>` - never rely on injected SDK state for anything the artifact needs to show on its own.",
+      "Ship a real `<style>` block with at least font, color, and spacing choices - default browser styling reads as unfinished, not as a deliberate 'plain' choice. See `design_baseline` (printed with every stencil) when there's no user-specified or subject-matched design system to follow instead.",
     ],
     snags: [
       "Regenerating a section's DOM structure (not just its text) on every revision - this invalidates every existing selector-based anchor even when the reviewer's comment is still conceptually valid.",

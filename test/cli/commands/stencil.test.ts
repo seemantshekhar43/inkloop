@@ -41,6 +41,17 @@ void test("with a known id, expands its sections and exits 0", () => {
   assert.match(text, /Mermaid/);
 });
 
+void test("every stencil id's output includes design_baseline (issue #89)", () => {
+  for (const id of ["plan", "comparison", "table", "report", "mockup", "diagram", "loopable"]) {
+    const { code, text } = captureWrite(process.stdout, () => runStencilCommand(id));
+    assert.equal(code, 0, id);
+    assert.match(text, /## design_baseline/, id);
+    assert.match(text, /font_stack:/, id);
+    assert.match(text, /spacing_scale:/, id);
+    assert.match(text, /priority:/, id);
+  }
+});
+
 void test("with an unknown id, exits 1 and lists known stencils on stderr", () => {
   const { code, text } = captureWrite(process.stderr, () => runStencilCommand("nonexistent"));
   assert.equal(code, 1);

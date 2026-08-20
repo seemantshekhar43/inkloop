@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { getStencil, listStencils } from "../../src/shared/stencils.js";
+import { DESIGN_BASELINE, getStencil, listStencils } from "../../src/shared/stencils.js";
 
 void test("listStencils returns the full stencil set with the ids named in issue #86", () => {
   const ids = listStencils().map((s) => s.id);
@@ -24,4 +24,21 @@ void test("getStencil returns the matching stencil by id", () => {
 
 void test("getStencil returns undefined for an unknown id", () => {
   assert.equal(getStencil("nonexistent"), undefined);
+});
+
+void test("loopable's rules ship a baseline visual-design expectation (issue #89)", () => {
+  const stencil = getStencil("loopable");
+  assert.ok(
+    stencil?.rules.some((r) => /<style>/.test(r) && /font/i.test(r) && /color/i.test(r) && /spacing/i.test(r)),
+    "loopable rules should ask for a real <style> block with font/color/spacing choices",
+  );
+});
+
+void test("DESIGN_BASELINE has all non-empty sections (issue #89)", () => {
+  assert.ok(DESIGN_BASELINE.summary.length > 0);
+  assert.ok(DESIGN_BASELINE.priority.length > 0);
+  assert.ok(DESIGN_BASELINE.font_stack.length > 0);
+  assert.ok(DESIGN_BASELINE.spacing_scale.length > 0);
+  assert.ok(DESIGN_BASELINE.palette.length > 0);
+  assert.ok(DESIGN_BASELINE.components.length > 0);
 });
