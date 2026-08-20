@@ -21,7 +21,7 @@ mechanism, keyed off the file path with no server-side state beyond the local ma
 ## Core loop (v1)
 
 ```
-agent writes artifact.html
+agent writes .inkloop/artifact.html
   → inkloop <file>            (opens/resumes a browser session)
   → human annotates elements / text ranges, queues feedback
   → inkloop poll <file>       (agent long-polls, blocks until feedback arrives)
@@ -40,6 +40,14 @@ works with any agent or no agent at all:
 ```
 npx -y inkloop <html-file>
 ```
+
+Convention: write the artifact under a project-local `.inkloop/` directory (e.g.
+`.inkloop/plan-comparison.html`), rather than an arbitrary scratch location. This is not enforced by
+the tool - inkloop keys the session off the file's absolute path, so any location works - but it
+keeps artifacts visible in the project tree and easy to gitignore, the same pattern `.lavish/` uses
+for lavish-axi. This is unrelated to inkloop's own session state (feedback, round history), which
+always lives under `~/.inkloop/<hash-of-absolute-path>/` regardless of where the artifact itself is
+written - see [Tech stack](#tech-stack) below.
 
 This starts a local server, prints a session URL to open in a browser, and works identically
 whether it's invoked by a human, a Claude Code skill, or any other agent shelling out to it — the

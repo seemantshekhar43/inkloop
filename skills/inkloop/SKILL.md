@@ -28,8 +28,12 @@ You do not need inkloop installed globally - invoke it with `npx -y inkloop <htm
 
 ## Workflow
 
-1. Write the artifact as a `.html` file. Location doesn't matter - inkloop keys the session off the
-   file's absolute path, not a fixed directory.
+1. Write the artifact as a `.html` file under `.inkloop/` in the current project (e.g.
+   `.inkloop/plan-comparison.html`), creating the directory if needed. This is a convention, not a
+   requirement enforced by the tool - inkloop keys the session off the file's absolute path, so any
+   location works - but keeping it in `.inkloop/` makes it visible and easy to gitignore alongside
+   the rest of the project, rather than scattered in a scratch dir. Prefer resuming/revising an
+   existing artifact under `.inkloop/` over writing a new one for the same review thread.
 2. Run `npx -y inkloop <html-file>` to open or resume a review session. It starts a local server and
    prints a `http://127.0.0.1:<port>/session/<hash>` URL - share that with the human (or open it
    yourself if you're driving the browser too).
@@ -50,7 +54,9 @@ You do not need inkloop installed globally - invoke it with `npx -y inkloop <htm
 
 - Sessions are keyed off the artifact's absolute file path (hashed to 16 hex chars) - no accounts,
   no server-side project setup.
-- All state is local, under `~/.inkloop/<hash>/` - nothing leaves the machine.
+- Session bookkeeping (feedback, round history, status) lives under `~/.inkloop/<hash>/` - this is
+  separate from the artifact file itself (which belongs in the project's own `.inkloop/`, per step 1
+  above) and from any git repo. Nothing leaves the machine either way.
 - If the human ends the session from the browser, a later plain `inkloop <file>` refuses to reopen
   it. Only pass `--reopen` when the human actually asks for further review - don't reopen a
   human-ended session uninvited.
