@@ -230,7 +230,45 @@ export function renderReviewShell(hash: string): string {
      confirmed it — same markup as a real round, just visibly provisional until it does. */
   .history-round.pending { opacity: 0.6; }
   .history-round-label {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
     font-size: var(--text-2xs); text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-dim);
+  }
+  /* Issue #76: a reviewer sending feedback had no way to tell "the agent hasn't looked at this
+     yet" from "the agent has it and is working" from "stuck" — the only prior signal was the
+     artifact silently live-reloading once a revision landed. Driven entirely off data the server
+     already tracked (FeedbackItem.deliveredAt, set the moment an inkloop poll call claims a
+     round, and the round's agent reply, if any) — no new endpoint needed, see roundStatus() below. */
+  .history-round-status {
+    display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto;
+    font-size: var(--text-2xs); text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .history-round-status::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: 0 0 auto;
+  }
+  .history-round-status.status-queued { color: var(--ink-dim); }
+  .history-round-status.status-sending { color: var(--ink-dim); }
+  .history-round-status.status-delivered { color: var(--ink-agent); }
+  .history-round-status.status-revised { color: var(--ink-success); }
+  /* The "agent has it" state has no natural end signal (there's no "agent is done thinking"
+     event) — pulsing the dot instead of leaving it static is what actually answers the reviewer's
+     "is this stuck?" question at a glance, without fabricating a fake progress bar. */
+  .history-round-status.status-delivered::before { animation: statusPulse 1.6s ease-in-out infinite; }
+  @keyframes statusPulse {
+    0%, 100% { opacity: 1; } 50% { opacity: 0.35; }
+  }
+  /* A moving gradient sweep across the working verb itself — reads as "still going" the same way
+     a chat app's "thinking…" shimmer does, more attention-grabbing than the pulsing dot alone
+     without going as far as a spinner (which would overstate how much progress info is actually
+     available — see roundStatus()'s docstring on why there's no real percent-done here). */
+  .history-round-status.status-delivered .status-text {
+    background: linear-gradient(90deg, var(--ink-agent) 0%, #fbe4b0 50%, var(--ink-agent) 100%);
+    background-size: 200% 100%; -webkit-background-clip: text; background-clip: text;
+    color: transparent; -webkit-text-fill-color: transparent;
+    animation: statusShimmer 1.8s linear infinite;
+  }
+  @keyframes statusShimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
   }
   .history-items { display: flex; flex-direction: column; gap: var(--space-1); }
   .history-item {
@@ -328,7 +366,11 @@ export function renderReviewShell(hash: string): string {
     padding: var(--space-3) var(--space-4); border-top: 1px solid var(--ink-border);
   }
   .composer-row textarea {
-    resize: vertical; min-height: 36px; max-height: 160px;
+    /* min-height fits ~4 visible lines, rather than the single-line-ish 36px it used to default
+       to - a reviewer writing more than a short note shouldn't immediately have to fight the
+       resize handle just to see what they've typed. (92px rendered closer to 5 lines in practice
+       than the line-height arithmetic suggested - tuned down from there instead.) */
+    resize: vertical; min-height: 74px; max-height: 220px; line-height: 1.4;
     background: #101014; color: var(--ink-text); border: 1px solid var(--ink-border);
     border-radius: var(--radius-sm); padding: var(--space-2); font: inherit;
     transition: border-color 0.15s var(--ease-out), box-shadow 0.15s var(--ease-out);
@@ -413,7 +455,7 @@ export function renderReviewShell(hash: string): string {
     .thread { flex-direction: row; overflow-x: auto; overflow-y: visible; max-height: none; }
     .pill { flex: 0 0 auto; max-width: 260px; min-width: 120px; }
     .composer-row { flex-direction: row; align-items: flex-start; }
-    .composer-row textarea { flex: 1; max-height: 120px; }
+    .composer-row textarea { flex: 1; max-height: 160px; }
     .composer-row button { align-self: stretch; }
   }
 
@@ -557,7 +599,16 @@ export function renderReviewShell(hash: string): string {
 
   function render() {
     if (items.length === 0) {
-      thread.innerHTML = '<div class="thread-empty">No annotations queued yet — select an element, select text, or write a note below.</div>';
+      // The onboarding-style hint ("select an element, select text, or write a note below") only
+      // earns its place before the reviewer has ever sent anything - once a session has real
+      // history (any round, ever), they already know how the composer works, and re-showing the
+      // same instructional copy every time the queue happens to empty out again just reads as
+      // noise. lastHistory is declared further down but hoisted (var) and already populated by
+      // the time render() is ever called - see the bottom of this script.
+      var hasHistory = (lastHistory.rounds || []).length > 0;
+      thread.innerHTML = hasHistory
+        ? ''
+        : '<div class="thread-empty">No annotations queued yet — select an element, select text, or write a note below.</div>';
     } else {
       thread.innerHTML = items.map(function (item) {
         var quote = item.target && item.target.quote
@@ -581,8 +632,9 @@ export function renderReviewShell(hash: string): string {
   }
 
   // ---- Round-history panel (issue #21, reflowed into the side panel by #43) -----------------
-  // Past rounds of sent annotations paired with the agent's "Agent revised" reply for that
-  // round, if any. Always visible in its own scrollable section of the side panel now — the
+  // Past rounds of sent annotations paired with the agent's reply for that round (labeled
+  // "Agent" — see roundHtml below), if any. Always visible in its own scrollable section of the
+  // side panel now — the
   // collapse/expand toggle from the bottom-dock version existed to reclaim vertical space the
   // dock was borrowing from the artifact; a fixed-width side panel doesn't borrow that space, so
   // there's nothing left to reclaim and the toggle is gone.
@@ -605,6 +657,38 @@ export function renderReviewShell(hash: string): string {
     historyLabel.textContent = label;
   }
 
+  // Issue #76: once a round is fully delivered there's no real "percent done" to show — the only
+  // honest signal is "the agent has it and hasn't replied yet". A single static "Agent has it"
+  // label reads the same whether that's been true for two seconds or twenty minutes, which is
+  // exactly the "can't tell working from stuck" complaint the issue opened with. Rotating through
+  // a word bank (picked deterministically per round, below) at least keeps the label feeling
+  // alive tick to tick instead of static text a reviewer stops trusting is still updating.
+  var WORKING_VERBS = [
+    'Pondering', 'Untangling', 'Noodling', 'Reworking', 'Sketching', 'Threading',
+    'Polishing', 'Wrangling', 'Tinkering', 'Marinating', 'Brewing'
+  ];
+
+  /**
+   * Issue #76: derives a round's status purely from data readSessionHistory already returns —
+   * no new endpoint, no CLI-side "I'm working on it" heartbeat to keep alive. deliveredAt is
+   * set server-side the instant an inkloop poll call claims a round (see feedback-store.ts's
+   * takePendingFeedback), so "every item delivered, no reply yet" is as close as this shell can
+   * get to "agent has it" without inventing a signal the CLI doesn't actually emit.
+   */
+  function roundStatus(round) {
+    if (round.reply) return { key: 'revised', label: 'Revised' };
+    var roundItems = round.items || [];
+    var allDelivered = roundItems.length > 0 && roundItems.every(function (item) { return Boolean(item.deliveredAt); });
+    if (allDelivered) {
+      // round.round is a stable, server-assigned integer (see FeedbackItem.round's docstring), so
+      // this picks the same verb for the same round on every re-render instead of flickering on
+      // each history refresh — "random-looking" across rounds, not literally Math.random().
+      var verb = WORKING_VERBS[round.round % WORKING_VERBS.length];
+      return { key: 'delivered', label: verb + '…' };
+    }
+    return { key: 'queued', label: 'Queued' };
+  }
+
   // Factored out of renderHistory so the optimistic-send path below (issue #63) can render the
   // exact same markup for a round that hasn't round-tripped to the server yet.
   function roundHtml(round, pending) {
@@ -624,12 +708,36 @@ export function renderReviewShell(hash: string): string {
         + driftNote + '</div>';
     }).join('');
     var replyHtml = round.reply
-      ? '<div class="history-reply"><div class="history-reply-label">Agent revised</div>'
+      ? '<div class="history-reply"><div class="history-reply-label">Agent</div>'
         + '<div class="history-reply-message">' + escapeHtml(round.reply.message) + '</div></div>'
       : '';
+    var status = pending ? { key: 'sending', label: 'Sending…' } : roundStatus(round);
+    // Once a round has a reply, "Agent revised" + the reply text below already says it's done -
+    // a "REVISED" pill on top of that is redundant, and across many rounds a whole history of
+    // solid-green pills would just be visual noise. The badge earns its place on rounds still
+    // in flight (queued or delivered-but-no-reply-yet), where it's the only signal available.
+    var statusHtml = status.key === 'revised'
+      ? ''
+      : '<span class="history-round-status status-' + status.key + '">'
+        + '<span class="status-text">' + escapeHtml(status.label) + '</span></span>';
     return '<div class="history-round' + (pending ? ' pending' : '') + '">'
-      + '<div class="history-round-label">Round ' + round.round + '</div>'
+      + '<div class="history-round-label"><span>Round ' + round.round + '</span>' + statusHtml + '</div>'
       + '<div class="history-items">' + itemsHtml + '</div>' + replyHtml + '</div>';
+  }
+
+  // Issue #78: the panel never scrolled itself, so a reviewer several rounds into a session had
+  // to manually scroll down to see the newest round (and, after #76, its live status badge) every
+  // time one landed. Only auto-scrolls when the reviewer was already at (or near) the bottom —
+  // scrolled up to reread an earlier round, a fresh round arriving shouldn't yank the view away.
+  var HISTORY_SCROLL_BOTTOM_SLACK_PX = 24;
+
+  function isHistoryPanelNearBottom() {
+    return historyPanel.scrollHeight - historyPanel.scrollTop - historyPanel.clientHeight
+      < HISTORY_SCROLL_BOTTOM_SLACK_PX;
+  }
+
+  function scrollHistoryPanelToBottom() {
+    historyPanel.scrollTop = historyPanel.scrollHeight;
   }
 
   function renderHistory(history) {
@@ -638,12 +746,32 @@ export function renderReviewShell(hash: string): string {
     updateHistoryLabel();
     renderSuggestions();
 
+    // fetchHistory() ticks alongside every reload long-poll response (~every pollTimeoutMs), not
+    // just when a round actually changed, and this rebuilds the panel wholesale every time - a
+    // full innerHTML replacement tears down the old nodes, so the browser doesn't reliably keep
+    // scrollTop where it was (it may reset to 0, or land somewhere arbitrary via scroll-anchoring
+    // guessing at a similar-looking node in the new markup). Both captured up front, before
+    // anything below can disturb them, and restored explicitly after rather than trusted to
+    // survive the replacement on their own.
+    var wasNearBottom = isHistoryPanelNearBottom();
+    var prevScrollTop = historyPanel.scrollTop;
+
     if (rounds.length === 0) {
       historyPanel.innerHTML = '<div class="history-empty">No rounds sent yet.</div>';
-      return;
+    } else {
+      historyPanel.innerHTML = rounds.map(function (round) { return roundHtml(round, false); }).join('');
+      // Was already at (or near) the bottom - follow new content down. Otherwise, put the
+      // reviewer back exactly where they were reading rather than wherever the DOM replacement
+      // happened to leave the scroll position.
+      historyPanel.scrollTop = wasNearBottom ? historyPanel.scrollHeight : prevScrollTop;
     }
 
-    historyPanel.innerHTML = rounds.map(function (round) { return roundHtml(round, false); }).join('');
+    // render()'s empty-queue branch decides whether to show the "select an element…" onboarding
+    // hint based on lastHistory, which this function just updated above - without re-running it
+    // here, a queue that was already empty before this round's Send resolved would go on showing
+    // the onboarding hint forever after, since nothing else re-evaluates it once the queue itself
+    // stops changing.
+    render();
   }
 
   /**
@@ -719,6 +847,11 @@ export function renderReviewShell(hash: string): string {
     var html = roundHtml({ round: roundNum, items: itemsForRound, reply: null }, true);
     if (historyPanel.querySelector('.history-empty')) historyPanel.innerHTML = '';
     historyPanel.insertAdjacentHTML('beforeend', html);
+    // A reviewer who just clicked Send is, by definition, engaged with the panel right now - the
+    // pending round they're about to watch resolve should always land in view, regardless of
+    // scroll position (unlike renderHistory's more conservative "only if already near bottom",
+    // used for rounds arriving from elsewhere - the agent's reply, another tab's Send).
+    scrollHistoryPanelToBottom();
   }
 
   function fetchHistory() {
@@ -929,7 +1062,9 @@ export function renderReviewShell(hash: string): string {
     } else if (data.type === 'inkloop:sent') {
       pendingSendItems = null;
       resetSendButton();
-      setStatus('Sent.', 'success');
+      // No "Sent." status line here (issue #76 follow-up) - the round-status badge that lands in
+      // the history panel a moment later (via fetchHistory below) already says as much, and
+      // outlives this transient line anyway once the reviewer looks away and back.
       fetchHistory();
     } else if (data.type === 'inkloop:send-error') {
       // Roll back the optimistic update above: put the unsent items back in the thread and drop

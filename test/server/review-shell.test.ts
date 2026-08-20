@@ -377,3 +377,116 @@ void test("issue #73: sending clears every suggestion immediately, not just once
     "suggestions should clear synchronously within the click handler, before the send is posted",
   );
 });
+
+void test("issue #76: a round-history entry carries a status derived from deliveredAt/reply, not just its own existence", () => {
+  const html = renderReviewShell(HASH);
+  const statusFnMatch = html.match(/function roundStatus\(round\) \{[\s\S]*?\n {2}\}/);
+  assert.ok(statusFnMatch, "expected to find roundStatus()");
+  const body = statusFnMatch[0];
+  // Reply present -> revised, regardless of delivery state.
+  assert.match(body, /if \(round\.reply\) return \{ key: 'revised', label: 'Revised' \};/);
+  // No reply, but every item has deliveredAt -> agent has it (a rotating verb, not a fixed label).
+  assert.match(body, /allDelivered = roundItems\.length > 0 && roundItems\.every/);
+  assert.match(body, /item\.deliveredAt/);
+  assert.match(body, /key: 'delivered'/);
+  // Anything else (nothing delivered yet, or only some items delivered) -> queued.
+  assert.match(body, /return \{ key: 'queued', label: 'Queued' \};/);
+});
+
+void test("issue #76: the round label renders a status pill wired to roundHtml's pending/roundStatus branches", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /class="history-round-status status-' \+ status\.key \+ '"/);
+  const roundHtmlMatch = html.match(/function roundHtml\(round, pending\) \{[\s\S]*?\n {2}\}/);
+  assert.ok(roundHtmlMatch, "expected to find roundHtml()");
+  assert.match(
+    roundHtmlMatch[0],
+    /var status = pending \? \{ key: 'sending', label: 'Sending…' \} : roundStatus\(round\);/,
+  );
+});
+
+void test("issue #76: the working-status verb bank is single-word and rotates deterministically by round number", () => {
+  const html = renderReviewShell(HASH);
+  const verbsMatch = html.match(/var WORKING_VERBS = \[([\s\S]*?)\];/);
+  assert.ok(verbsMatch, "expected to find WORKING_VERBS");
+  const verbs = (verbsMatch?.[1] ?? "").match(/'([^']+)'/g)?.map((s) => s.slice(1, -1)) ?? [];
+  assert.ok(verbs.length > 0, "expected at least one working verb");
+  for (const verb of verbs) {
+    assert.doesNotMatch(verb, /\s/, `expected "${verb}" to be a single word`);
+  }
+  // Deterministic per round (round.round % verbs.length), not Math.random() - a re-render of the
+  // same round must not flicker to a different verb.
+  assert.match(html, /WORKING_VERBS\[round\.round % WORKING_VERBS\.length\]/);
+});
+
+void test("issue #78: renderHistory follows new content to the bottom only when the reviewer was already near it, otherwise restores their exact scroll position", () => {
+  const html = renderReviewShell(HASH);
+  const renderHistoryMatch = html.match(/function renderHistory\(history\) \{[\s\S]*?\n {2}\}/);
+  assert.ok(renderHistoryMatch, "expected to find renderHistory()");
+  const body = renderHistoryMatch[0];
+  // Both captured before the innerHTML rewrite, which tears down the old nodes and doesn't
+  // reliably preserve scrollTop on its own (may reset to 0, or land somewhere arbitrary via the
+  // browser's scroll-anchoring guessing at a similar node in the new markup).
+  const wasNearBottomAt = body.indexOf("var wasNearBottom = isHistoryPanelNearBottom();");
+  const prevScrollTopAt = body.indexOf("var prevScrollTop = historyPanel.scrollTop;");
+  const innerHtmlAt = body.indexOf("historyPanel.innerHTML = rounds.map");
+  assert.ok(wasNearBottomAt >= 0, "expected wasNearBottom to be captured");
+  assert.ok(prevScrollTopAt >= 0, "expected prevScrollTop to be captured");
+  assert.ok(innerHtmlAt > wasNearBottomAt, "expected the near-bottom check before the innerHTML rewrite");
+  assert.ok(innerHtmlAt > prevScrollTopAt, "expected prevScrollTop to be captured before the innerHTML rewrite");
+  // Explicitly restored after, rather than left to however the DOM replacement happened to leave it.
+  assert.match(body, /historyPanel\.scrollTop = wasNearBottom \? historyPanel\.scrollHeight : prevScrollTop;/);
+});
+
+void test("issue #78: the optimistic pending round always scrolls into view (the reviewer just clicked Send)", () => {
+  const html = renderReviewShell(HASH);
+  const renderPendingMatch = html.match(/function renderPendingRound\(itemsForRound\) \{[\s\S]*?\n {2}\}/);
+  assert.ok(renderPendingMatch, "expected to find renderPendingRound()");
+  assert.match(renderPendingMatch[0], /scrollHistoryPanelToBottom\(\);/);
+});
+
+void test("issue #78: near-bottom detection uses the panel's own scroll metrics with slack, not an exact-zero check", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(
+    html,
+    /historyPanel\.scrollHeight - historyPanel\.scrollTop - historyPanel\.clientHeight\s*\n?\s*< HISTORY_SCROLL_BOTTOM_SLACK_PX/,
+  );
+});
+
+void test("issue #76 follow-up: the status pill is hidden once a round has a reply - the 'Agent' block already says it's done", () => {
+  const html = renderReviewShell(HASH);
+  const roundHtmlMatch = html.match(/function roundHtml\(round, pending\) \{[\s\S]*?\n {2}\}/);
+  assert.ok(roundHtmlMatch, "expected to find roundHtml()");
+  assert.match(
+    roundHtmlMatch[0],
+    /var statusHtml = status\.key === 'revised'\s*\n\s*\? ''/,
+  );
+});
+
+void test("issue #76 follow-up: the empty-queue onboarding hint only shows before the session has ever had history", () => {
+  const html = renderReviewShell(HASH);
+  const renderFnMatch = html.match(/function render\(\) \{[\s\S]*?\n {4}\} else \{/);
+  assert.ok(renderFnMatch, "expected to find render()'s empty-queue branch");
+  const body = renderFnMatch[0];
+  assert.match(body, /var hasHistory = \(lastHistory\.rounds \|\| \[\]\)\.length > 0;/);
+  assert.match(body, /thread\.innerHTML = hasHistory\s*\n\s*\? ''/);
+});
+
+void test("the composer textarea defaults to roughly 4 visible lines, not 1-2", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /min-height: 74px; max-height: 220px; line-height: 1\.4;/);
+});
+
+void test("issue #76 follow-up: renderHistory re-runs render() so the onboarding hint clears once a send resolves, not just on the next queue change", () => {
+  const html = renderReviewShell(HASH);
+  const renderHistoryMatch = html.match(/function renderHistory\(history\) \{[\s\S]*?\n {2}\}/);
+  assert.ok(renderHistoryMatch, "expected to find renderHistory()");
+  assert.match(renderHistoryMatch[0], /render\(\);\s*\n {2}\}/);
+});
+
+void test("issue #76 follow-up: no separate 'Sent.' status line on a successful send - the round-status badge already says so", () => {
+  const html = renderReviewShell(HASH);
+  const sentHandlerMatch = html.match(/data\.type === 'inkloop:sent'\) \{[\s\S]*?\} else if \(data\.type === 'inkloop:send-error'\)/);
+  assert.ok(sentHandlerMatch, "expected to find the inkloop:sent handler");
+  assert.doesNotMatch(sentHandlerMatch[0], /setStatus\('Sent\.'/);
+  assert.match(sentHandlerMatch[0], /fetchHistory\(\);/);
+});
