@@ -4,7 +4,10 @@ import { runStencilCommand } from "../../../src/cli/commands/stencil.js";
 
 type WriteFn = typeof process.stdout.write;
 
-function captureWrite(stream: NodeJS.WriteStream, fn: () => number): { code: number; text: string } {
+function captureWrite(
+  stream: NodeJS.WriteStream,
+  fn: () => number,
+): { code: number; text: string } {
   const original: WriteFn = stream.write.bind(stream);
   let text = "";
   stream.write = (chunk: Uint8Array | string) => {

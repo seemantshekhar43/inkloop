@@ -52,7 +52,7 @@ written - see [Tech stack](#tech-stack) below.
 This starts a local server, prints a session URL to open in a browser, and works identically
 whether it's invoked by a human, a Claude Code skill, or any other agent shelling out to it — the
 CLI and the served artifact don't care what wrote the HTML. `inkloop --help` documents the full
-command set (`poll`, `end`, `stop`, `--reopen`).
+command set (`poll`, `end`, `stop`, `stencil`, `--reopen`).
 
 ### Claude Code
 
