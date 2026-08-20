@@ -20,12 +20,26 @@ export type StencilId =
  * output (see `runStencilCommand`), not just `loopable`, since the failure mode hit table, plan,
  * report, diagram, and comparison artifacts alike, not just mockup.
  *
+ * Extended by issue #90 (follow-up to #89): re-simulating the same 10 artifacts post-#89 confirmed
+ * the zero-CSS failure was gone, but scored consistently lower on UI quality (7.54/10 avg) than an
+ * equivalent artifact built from lavish-axi's static design guidance (8.21/10 avg) across 9 of 10
+ * briefs - the recurring, evidenced gaps were: no component-library fallback ever named as an option,
+ * no concrete example per component (prose rules only), no responsive-breakpoint starting pattern, no
+ * dark-mode/theme-variant prompt, no stencil-specific component patterns (a plan's step/timeline, a
+ * dashboard's stat/KPI tile, a status-color-to-semantic worked example), and the table stencil's own
+ * overflow-x safety note not being reachable from design_baseline's generic Tables bullet. The one
+ * brief where inkloop's hand-authored baseline won outright did so because lavish's recommended
+ * default theme didn't fit that artifact's subject - hence `priority`'s CDN option below is explicit
+ * about picking a fitting palette, not one fixed default.
+ *
  * Deliberately a documented floor, not a design-system generator: a small system-font stack, a small
  * spacing scale, a neutral palette, and basic table/card/button treatment - enough that "I have no
  * design system, what do I use" has an answer instead of silence. No runtime CSS injection: any
  * styling has to live in the artifact's own HTML, authored by the agent, or the standalone-render
  * invariant (AGENTS.md) breaks - opening the saved artifact directly must render identically to
- * opening it through inkloop.
+ * opening it through inkloop. A CDN component library is named as one *available* option below (per
+ * the existing Mermaid-CDN precedent in AGENTS.md: "the artifact author's concern, not inkloop's"),
+ * not a required dependency - inkloop itself still adds nothing.
  */
 export interface DesignBaseline {
   /** One-line framing: why this exists and when it applies. */
@@ -38,8 +52,16 @@ export interface DesignBaseline {
   spacing_scale: string;
   /** Fallback neutral/accent/status color guidance when nothing above already answered it. */
   palette: string[];
-  /** Baseline treatment for the handful of components almost every artifact needs. */
+  /** Baseline treatment for the handful of components almost every artifact needs, each with a concrete example. */
   components: string[];
+  /** Component patterns that recur for specific content shapes (steps, stat tiles, code/log excerpts). */
+  patterns: string[];
+  /** Concrete responsive-breakpoint starting point, not just the general "must be responsive" snag. */
+  responsive: string;
+  /** Whether/how to consider a dark-mode or theme-variant path, mirroring the mockup stencil's "state what's out of scope" pattern. */
+  theming: string;
+  /** Copy-paste CSS to prevent nested-layout overflow, reused across artifacts instead of reinvented. */
+  layout_safety: string;
 }
 
 export const DESIGN_BASELINE: DesignBaseline = {
@@ -48,7 +70,8 @@ export const DESIGN_BASELINE: DesignBaseline = {
   priority: [
     "If the user asked for a specific look or named design system, use that.",
     "Otherwise, if the artifact represents an existing app or product, match that subject's own design system - its CSS variables/theme config, component library, brand assets, or existing styled pages - even when the artifact is authored from a different repo.",
-    "Only when both come up empty, fall back to the baseline below.",
+    "Otherwise, a CDN-loaded component library (e.g. Tailwind's browser runtime plus a component set) is an available option, the same way an artifact can already bring its own Mermaid CDN script (see AGENTS.md) - pick a palette/theme that actually fits the artifact's subject rather than reaching for one fixed default; a mismatched theme (e.g. a luxury/finance look on a fitness-tracker dashboard) reads worse than the plain baseline below.",
+    "Only when all of the above come up empty, fall back to the baseline in this reference.",
   ],
   font_stack:
     "A real system-font stack for prose (e.g. -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif), or a monospace stack for code-heavy content - never leave body text on the browser's serif default.",
@@ -57,13 +80,24 @@ export const DESIGN_BASELINE: DesignBaseline = {
   palette: [
     "One neutral page background, one neutral surface/card color a shade off it, one body-text color with at least 4.5:1 contrast against both.",
     "One accent color used sparingly for emphasis, links, and primary actions - not applied to every heading or label.",
-    "Status colors (success/warning/error) only where the content has that semantic, paired with a non-color cue - see the table/comparison stencils' snags on color-only signaling.",
+    'Status colors (success/warning/error) only where the content has that semantic, paired with a non-color cue - see the table/comparison stencils\' snags on color-only signaling. Map color to favorability, not magnitude or urgency (e.g. a "high satisfaction" rating is success-green; a "high risk" rating is error-red) - the two easily get inverted when named after the metric instead of the verdict.',
   ],
   components: [
-    "Cards: a border or subtle shadow plus padding, not a bare unstyled <div>.",
-    "Tables: a visually distinct header row (weight/background) and row separation (dividers or zebra striping) for scanability.",
-    "Buttons/links: a visible hover/focus state, not raw unstyled <a>/<button> defaults.",
+    'Cards: a border or subtle shadow plus padding, not a bare unstyled <div>. Example: `.card { padding: 16px; border-radius: 8px; border: 1px solid var(--border); box-shadow: 0 1px 2px rgba(0,0,0,.06); }`.',
+    'Tables: a visually distinct header row (weight/background) and row separation (dividers or zebra striping) for scanability, wrapped in its own `overflow-x: auto` container regardless of stencil - see the table/comparison stencils\' loop_notes for why. Example: `.table-wrap { overflow-x: auto; } th { text-align: left; font-weight: 600; background: var(--surface); } tbody tr:nth-child(even) { background: var(--surface); }`.',
+    'Buttons/links: a visible hover/focus state, not raw unstyled <a>/<button> defaults. Example: `button { padding: 8px 16px; border-radius: 6px; background: var(--accent); color: #fff; border: none; } button:hover { filter: brightness(1.08); } button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }`.',
   ],
+  patterns: [
+    'Step/phase indicator (the `plan` stencil\'s defining visual element): a numbered vertical or horizontal rail, not prose-only steps. Example: a `<ol class="steps">` with `.steps { position: relative; padding-left: 28px; } .steps::before { content: ""; position: absolute; left: 9px; top: 0; bottom: 0; width: 2px; background: var(--border); } .steps li::before { content: attr(data-n); position: absolute; left: -28px; width: 20px; height: 20px; border-radius: 50%; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 12px; }`.',
+    "Stat/KPI tile row (dashboards, executive summaries): a row of labeled numbers above the detail, each with a label/value/optional trend - gives a reader an at-a-glance summary before the supporting detail, not just a wall of cards.",
+    "Code/log excerpt block: a monospace block with its own background distinct from prose (e.g. `background: var(--surface); font-family: ui-monospace, monospace; padding: 12px; border-radius: 6px; overflow-x: auto;`), not plain text dropped inline with body copy.",
+  ],
+  responsive:
+    "Start from one breakpoint around 640-720px that collapses multi-column layouts (grids, side-by-side cards, wide tables) to a single column or a horizontally-scrolling container, rather than inventing a threshold from scratch each time. Add more breakpoints only if the content genuinely needs them.",
+  theming:
+    "Dark mode/theme variants are not required, but state the decision rather than leaving it silent: either support one (e.g. via `prefers-color-scheme` on top of CSS custom properties, so only the token values change) or note in the artifact that it's light-only for this pass - mirrors the mockup stencil's \"state what's out of scope\" rule.",
+  layout_safety:
+    'Copy-paste when nesting grid/flex layouts, badges, or wide monospace content: `*, *::before, *::after { box-sizing: border-box; } .grid > *, .flex > * { min-width: 0; } p, li, td, th { overflow-wrap: anywhere; } img, svg, video { max-width: 100%; height: auto; }` - prevents a nested child or an unbreakable token from silently pushing the artifact wider than the viewport.',
 };
 
 export interface Stencil {

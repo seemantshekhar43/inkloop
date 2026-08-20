@@ -49,6 +49,10 @@ void test("every stencil id's output includes design_baseline (issue #89)", () =
     assert.match(text, /font_stack:/, id);
     assert.match(text, /spacing_scale:/, id);
     assert.match(text, /priority:/, id);
+    assert.match(text, /patterns:/, id);
+    assert.match(text, /responsive:/, id);
+    assert.match(text, /theming:/, id);
+    assert.match(text, /layout_safety:/, id);
   }
 });
 

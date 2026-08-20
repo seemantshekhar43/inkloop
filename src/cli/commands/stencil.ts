@@ -67,6 +67,11 @@ export function runStencilCommand(id?: string): number {
     ...DESIGN_BASELINE.palette.map((p) => `- ${p}`),
     "components:",
     ...DESIGN_BASELINE.components.map((c) => `- ${c}`),
+    "patterns:",
+    ...DESIGN_BASELINE.patterns.map((p) => `- ${p}`),
+    `responsive: ${DESIGN_BASELINE.responsive}`,
+    `theming: ${DESIGN_BASELINE.theming}`,
+    `layout_safety: ${DESIGN_BASELINE.layout_safety}`,
   ];
   process.stdout.write(`${lines.join("\n")}\n`);
   return 0;
