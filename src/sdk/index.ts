@@ -351,6 +351,10 @@
   // ---- Text-range picker ------------------------------------------------------------------
 
   document.addEventListener("mouseup", (event) => {
+    // Issue #80: annotating a text range requires Sidenote to be active, same as the element
+    // picker just above - a bare native word/paragraph selection (double/triple-click) must not
+    // open the composer on its own just because it happens to be non-collapsed.
+    if (!pickingElement || pendingTarget) return;
     if (isSdkNode(event.target)) return;
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
