@@ -517,6 +517,10 @@ export function renderReviewShell(hash: string): string {
     .dock-handle-arrow { transform: rotate(90deg); }
   }
 
+  @media (max-width: 480px) {
+    aside#dock { max-height: 55vh; }
+  }
+
   /* Issue #42 follow-up: the premium pass above added several entrance/press animations (banner
      slide-in, pill fade-in, modal scale-in, button press-scale) and transitions (hover lift, focus
      glow) — none of them convey information on their own, so a reviewer with vestibular motion
