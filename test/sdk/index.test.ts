@@ -202,3 +202,23 @@ void test("issue #73: the heuristic fallback looks for headings, missing alt tex
   // Caps out at MAX_SUGGESTIONS so the shell never has to truncate a longer list itself.
   assert.match(fnBody, /suggestions\.slice\(0, MAX_SUGGESTIONS\)/);
 });
+
+void test("issue #80: the text-range picker's mouseup listener requires Sidenote (pickingElement) to be active", () => {
+  // Previously this listener only checked whether the current selection was non-collapsed and
+  // non-empty, so a native double/triple-click word selection opened the comment composer even
+  // with Sidenote off. It must gate on the same picking state the element-picker click handler
+  // uses, before ever inspecting window.getSelection().
+  const mouseupIndex = sdkSource.indexOf('addEventListener("mouseup"');
+  assert.ok(mouseupIndex >= 0, "expected the text-range picker's mouseup listener");
+  const selectionIndex = sdkSource.indexOf("window.getSelection()", mouseupIndex);
+  assert.ok(selectionIndex >= 0, "expected the mouseup listener to read window.getSelection()");
+  const guardMatch = /if \(!pickingElement \|\| pendingTarget\)\s*\n?\s*return;/.exec(
+    sdkSource.slice(mouseupIndex),
+  );
+  assert.ok(guardMatch, "expected the picking-state guard inside the mouseup listener");
+  const guardIndex = mouseupIndex + guardMatch.index;
+  assert.ok(
+    guardIndex < selectionIndex,
+    "the picking-state guard must run before the selection is ever inspected",
+  );
+});
