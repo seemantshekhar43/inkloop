@@ -104,6 +104,18 @@ void test("stop is routed to the stop command (routing is covered end to end in 
   }
 });
 
+void test("stencil with no id is routed to the stencil command and lists ids", async () => {
+  const { code, text } = await captureWrite(process.stdout, () => run(["stencil"]));
+  assert.equal(code, 0);
+  assert.match(text, /Available stencils/);
+});
+
+void test("stencil with an unknown id is routed to the stencil command and exits 1", async () => {
+  const { code, text } = await captureWrite(process.stderr, () => run(["stencil", "nonexistent"]));
+  assert.equal(code, 1);
+  assert.match(text, /unknown stencil/);
+});
+
 void test("a bare non-flag argument is routed to the open command", async () => {
   // No such file exists — proves routing happens (open command's own errors are unit-tested
   // separately in commands/open.test.ts), not that opening succeeds.
