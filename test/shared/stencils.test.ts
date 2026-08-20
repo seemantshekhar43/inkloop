@@ -42,3 +42,29 @@ void test("DESIGN_BASELINE has all non-empty sections (issue #89)", () => {
   assert.ok(DESIGN_BASELINE.palette.length > 0);
   assert.ok(DESIGN_BASELINE.components.length > 0);
 });
+
+void test("DESIGN_BASELINE names a component-library fallback and subject-fit note (issue #90)", () => {
+  assert.ok(
+    DESIGN_BASELINE.priority.some((p) => /CDN/.test(p) && /fit/i.test(p)),
+    "priority should offer a CDN component-library option and warn against a mismatched default theme",
+  );
+});
+
+void test("DESIGN_BASELINE's components ship a concrete example per rule (issue #90)", () => {
+  for (const component of DESIGN_BASELINE.components) {
+    assert.match(component, /Example:/, component);
+  }
+});
+
+void test("DESIGN_BASELINE's Tables component references overflow-x safety directly (issue #90)", () => {
+  const tables = DESIGN_BASELINE.components.find((c) => c.startsWith("Tables:"));
+  assert.ok(tables, "expected a Tables component entry");
+  assert.match(tables ?? "", /overflow-x/);
+});
+
+void test("DESIGN_BASELINE has all non-empty issue #90 sections", () => {
+  assert.ok(DESIGN_BASELINE.patterns.length > 0);
+  assert.ok(DESIGN_BASELINE.responsive.length > 0);
+  assert.ok(DESIGN_BASELINE.theming.length > 0);
+  assert.ok(DESIGN_BASELINE.layout_safety.length > 0);
+});
