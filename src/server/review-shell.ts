@@ -27,6 +27,11 @@
 export function renderReviewShell(hash: string): string {
   // hash is validated upstream by the server's route regex ([0-9a-f]{16}), so it's safe to
   // interpolate directly here — same reasoning as the artifact/feedback route handlers.
+  // Issue #79: the standard "toggle side panel" glyph (a rounded rect standing in for the whole
+  // shell, one section shaded to mark the panel) — shared by both the in-panel collapse button
+  // and the edge handle that replaces it once collapsed, since they're the same concept from two
+  // different states, not two different icons.
+  const dockToggleIcon = `<svg class="dock-toggle-icon" width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" stroke-width="1.3"/><rect x="10.6" y="3.4" width="3.1" height="9.2" rx="0.6" fill="currentColor"/></svg>`;
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -200,7 +205,7 @@ export function renderReviewShell(hash: string): string {
   }
   .picking-hint.visible { display: flex; }
   .picking-hint.fading { opacity: 0; }
-  .content { flex: 1 1 auto; display: flex; flex-direction: row; min-height: 0; }
+  .content { flex: 1 1 auto; display: flex; flex-direction: row; min-height: 0; position: relative; }
   main { flex: 1 1 auto; position: relative; min-height: 0; }
   iframe { border: 0; width: 100%; height: 100%; display: block; background: #fff; }
   /* Issue #43: a fixed-width right-side panel instead of the full-width bottom dock — see the
@@ -211,11 +216,54 @@ export function renderReviewShell(hash: string): string {
     box-shadow: -12px 0 32px -12px rgba(0, 0, 0, 0.4);
     position: relative; z-index: 1;
   }
-  .dock-section-label {
-    flex: 0 0 auto; font-size: var(--text-xs); color: var(--ink-dim);
-    text-transform: uppercase; letter-spacing: 0.06em;
-    padding: var(--space-3) var(--space-4) var(--space-2);
+  /* Issue #79: collapsing the dock hands its full 340px back to the artifact iframe — display:
+     none rather than an animated width collapse, since the panel's own contents (history list,
+     composer) have no useful mid-collapse state to animate through, and this stays correct
+     unmodified under the <900px bottom-drawer layout below (that breakpoint only changes the
+     dock's own flex/width, not this rule). */
+  body.dock-collapsed aside#dock { display: none; }
+  /* Issue #79: the dock only ever needs one toggle visible at a time — a "hide" control living
+     inside the panel itself (top-right of its header row, next to the round count) while it's
+     open, and a "show" handle at the viewport's right edge once it's gone (positioned relative to
+     .content, not the aside, or it would vanish along with everything else display:none hides).
+     Neither button changes what it does or how it looks; only which one is present changes. */
+  .dock-handle {
+    appearance: none; border: 1px solid var(--ink-border); border-right: 0;
+    background: var(--ink-panel-raised); color: var(--ink-dim);
+    border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+    display: none; align-items: center; justify-content: center; cursor: pointer;
+    position: absolute; z-index: 2; top: 50%; right: 0; width: 22px; height: 60px;
+    transform: translateY(-50%);
+    transition: background-color 0.15s var(--ease-out), border-color 0.15s var(--ease-out),
+      color 0.15s var(--ease-out);
   }
+  .dock-handle:hover { color: var(--ink-text); border-color: var(--ink-accent); }
+  .dock-handle:active { transform: translateY(-50%) scale(0.93); }
+  body.dock-collapsed .dock-handle { display: flex; }
+  .dock-toggle-icon { display: block; }
+  /* The edge handle only ever means "bring the panel back" — a plain directional arrow reads
+     faster there than the panel glyph the in-panel collapse button uses, especially at this
+     handle's narrow width. Rotates 90° under the <900px bottom-drawer layout below, where "back"
+     means "up" instead of "left". */
+  .dock-handle-arrow { font-size: var(--text-md); line-height: 1; display: inline-block; }
+  .dock-header-row {
+    flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+    gap: var(--space-2); padding: var(--space-3) var(--space-4) var(--space-2);
+  }
+  .dock-section-label {
+    font-size: var(--text-xs); color: var(--ink-dim);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .dock-collapse-btn {
+    appearance: none; border: 1px solid var(--ink-border); background: transparent;
+    color: var(--ink-dim); border-radius: var(--radius-sm); cursor: pointer; flex: 0 0 auto;
+    width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+    transition: background-color 0.15s var(--ease-out), border-color 0.15s var(--ease-out),
+      color 0.15s var(--ease-out), transform 0.1s var(--ease-out);
+  }
+  .dock-collapse-btn:hover { color: var(--ink-text); border-color: var(--ink-accent); }
+  .dock-collapse-btn:active { transform: scale(0.93); }
   .history-panel {
     flex: 1 1 auto; display: flex; flex-direction: column; gap: var(--space-3);
     overflow-y: auto; min-height: 80px; padding: 0 var(--space-4) var(--space-3);
@@ -457,6 +505,16 @@ export function renderReviewShell(hash: string): string {
     .composer-row { flex-direction: row; align-items: flex-start; }
     .composer-row textarea { flex: 1; max-height: 160px; }
     .composer-row button { align-self: stretch; }
+    /* The handle only ever shows once the drawer is gone (same display:none-gated rule as
+       desktop), so it sits at the true viewport bottom edge rather than tracking the drawer's own
+       max-height — nothing left below it to leave a gap against. */
+    .dock-handle {
+      top: auto; right: auto; bottom: 0; left: 50%; width: 60px; height: 22px;
+      border-right: 1px solid var(--ink-border); border-bottom: 0; border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+      transform: translateX(-50%);
+    }
+    .dock-handle:active { transform: translateX(-50%) scale(0.93); }
+    .dock-handle-arrow { transform: rotate(90deg); }
   }
 
   @media (max-width: 480px) {
@@ -494,8 +552,12 @@ export function renderReviewShell(hash: string): string {
   <main>
     <iframe id="artifact-frame" src="/session/${hash}/artifact" title="artifact preview"></iframe>
   </main>
+  <button type="button" class="dock-handle" id="dock-handle" aria-expanded="true" aria-controls="dock" aria-label="Show side panel"><span class="dock-handle-arrow" aria-hidden="true">◂</span></button>
   <aside id="dock">
-    <div class="dock-section-label" id="history-label">History · 0 rounds, 0 comments</div>
+    <div class="dock-header-row">
+      <span class="dock-section-label" id="history-label">History · 0 rounds, 0 comments</span>
+      <button type="button" class="dock-collapse-btn" id="dock-collapse-btn" aria-expanded="true" aria-controls="dock" aria-label="Hide side panel">${dockToggleIcon}</button>
+    </div>
     <div class="history-panel" id="history-panel"></div>
     <div class="thread" id="thread">
       <div class="thread-empty">No annotations queued yet — select an element, select text, or write a note below.</div>
@@ -537,6 +599,8 @@ export function renderReviewShell(hash: string): string {
   var endModalOverlay = document.getElementById('end-modal-overlay');
   var endModalCancel = document.getElementById('end-modal-cancel');
   var endModalConfirm = document.getElementById('end-modal-confirm');
+  var dockHandle = document.getElementById('dock-handle');
+  var dockCollapseBtn = document.getElementById('dock-collapse-btn');
   var picking = false;
   // Issue #73: candidate starter prompts from the SDK's DOM heuristics over the currently-loaded
   // artifact. Recomputed by the SDK on every load (including live reloads), but only ever shown
@@ -573,6 +637,37 @@ export function renderReviewShell(hash: string): string {
       return makeTabId();
     }
   })();
+
+  // Issue #79: hide/show the side dock to hand its 340px back to the artifact. Persisted per
+  // session (not per-tab like TAB_ID above — a reviewer who collapses it expects that to stick
+  // across reloads/tabs of the same session, same as any other layout preference would).
+  var DOCK_COLLAPSED_KEY = 'inkloop-dock-collapsed:' + SESSION_HASH;
+
+  function setDockCollapsed(collapsed) {
+    document.body.classList.toggle('dock-collapsed', collapsed);
+    // Both buttons carry the same aria-expanded/aria-controls pair — only one is ever visible
+    // (the CSS above shows dock-handle exclusively while collapsed), but keeping both in sync
+    // means whichever one a screen reader lands on reports the real state.
+    dockHandle.setAttribute('aria-expanded', String(!collapsed));
+    dockCollapseBtn.setAttribute('aria-expanded', String(!collapsed));
+    try {
+      window.sessionStorage.setItem(DOCK_COLLAPSED_KEY, collapsed ? '1' : '0');
+    } catch (e) {
+      // sessionStorage unavailable (private mode, etc.) — the toggle still works for this load,
+      // it just won't survive a reload, same fallback as TAB_ID above.
+    }
+  }
+
+  (function () {
+    var initiallyCollapsed = false;
+    try {
+      initiallyCollapsed = window.sessionStorage.getItem(DOCK_COLLAPSED_KEY) === '1';
+    } catch (e) {}
+    setDockCollapsed(initiallyCollapsed);
+  })();
+
+  dockHandle.addEventListener('click', function () { setDockCollapsed(false); });
+  dockCollapseBtn.addEventListener('click', function () { setDockCollapsed(true); });
 
   function escapeHtml(value) {
     return String(value).replace(/[&<>"']/g, function (c) {

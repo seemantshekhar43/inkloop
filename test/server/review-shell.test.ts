@@ -490,3 +490,49 @@ void test("issue #76 follow-up: no separate 'Sent.' status line on a successful 
   assert.doesNotMatch(sentHandlerMatch[0], /setStatus\('Sent\.'/);
   assert.match(sentHandlerMatch[0], /fetchHistory\(\);/);
 });
+
+void test("issue #79: renders an in-panel collapse button and a viewport-edge expand handle for the side dock", () => {
+  const html = renderReviewShell(HASH);
+  // Edge handle: outside <aside id="dock">, so display:none on the aside can't hide it too.
+  const dockHandleIndex = html.indexOf('id="dock-handle"');
+  const asideIndex = html.indexOf('<aside id="dock">');
+  assert.ok(dockHandleIndex >= 0, "expected a #dock-handle edge handle");
+  assert.ok(asideIndex >= 0, "expected <aside id=\"dock\">");
+  assert.ok(dockHandleIndex < asideIndex, "expected the edge handle to render before <aside>, not nested inside it");
+  // In-panel collapse button: inside the panel's own header row, next to the round/comment label.
+  const headerRowMatch = html.match(/<div class="dock-header-row">[\s\S]*?<\/div>/);
+  assert.ok(headerRowMatch, "expected a .dock-header-row wrapping the label and collapse button");
+  assert.match(headerRowMatch[0], /id="history-label"/);
+  assert.match(headerRowMatch[0], /id="dock-collapse-btn"/);
+  // Both controls carry matching aria-expanded/aria-controls so a screen reader gets consistent
+  // state regardless of which one is currently visible.
+  assert.match(html, /id="dock-handle" aria-expanded="true" aria-controls="dock"/);
+  assert.match(html, /id="dock-collapse-btn" aria-expanded="true" aria-controls="dock"/);
+});
+
+void test("issue #79: collapsing the dock hides the whole panel via body.dock-collapsed, freeing its 340px to the iframe", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /body\.dock-collapsed aside#dock \{ display: none; \}/);
+  // The edge handle only appears once collapsed; it's positioned off the .content wrapper (not
+  // the aside), so it survives the aside's display:none.
+  assert.match(html, /body\.dock-collapsed \.dock-handle \{ display: flex; \}/);
+});
+
+void test("issue #79: dock collapsed state persists per session via sessionStorage, keyed by session hash", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /var DOCK_COLLAPSED_KEY = 'inkloop-dock-collapsed:' \+ SESSION_HASH;/);
+  assert.match(html, /function setDockCollapsed\(collapsed\)/);
+  assert.match(html, /window\.sessionStorage\.setItem\(DOCK_COLLAPSED_KEY, collapsed \? '1' : '0'\)/);
+  assert.match(html, /window\.sessionStorage\.getItem\(DOCK_COLLAPSED_KEY\) === '1'/);
+  // Read on load and applied before either button is wired up, so the shell opens in the
+  // previously-chosen state rather than always starting expanded.
+  const iife = html.match(/\(function \(\) \{\s*var initiallyCollapsed[\s\S]*?\}\)\(\);/);
+  assert.ok(iife, "expected the initial-state IIFE reading sessionStorage");
+  assert.match(iife[0], /setDockCollapsed\(initiallyCollapsed\);/);
+});
+
+void test("issue #79: the handle expands and the in-panel button collapses, each wired to its own click", () => {
+  const html = renderReviewShell(HASH);
+  assert.match(html, /dockHandle\.addEventListener\('click', function \(\) \{ setDockCollapsed\(false\); \}\);/);
+  assert.match(html, /dockCollapseBtn\.addEventListener\('click', function \(\) \{ setDockCollapsed\(true\); \}\);/);
+});

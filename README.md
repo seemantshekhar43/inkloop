@@ -30,12 +30,38 @@ agent writes artifact.html
   → repeat until inkloop end <file>
 ```
 
-## Using inkloop as an agent skill
+## Getting started
+
+### Quick start
+
+inkloop is a plain npm CLI with no server-side account or project setup, so the zero-setup path
+works with any agent or no agent at all:
+
+```
+npx -y inkloop <html-file>
+```
+
+This starts a local server, prints a session URL to open in a browser, and works identically
+whether it's invoked by a human, a Claude Code skill, or any other agent shelling out to it — the
+CLI and the served artifact don't care what wrote the HTML. `inkloop --help` documents the full
+command set (`poll`, `end`, `stop`, `--reopen`).
+
+### Claude Code
 
 [`skills/inkloop/SKILL.md`](skills/inkloop/SKILL.md) packages the core loop above as a Claude Code
-skill, so an agent recognizes when an HTML artifact is worth putting through inkloop and knows the
+skill, so the agent recognizes when an HTML artifact is worth putting through inkloop and knows the
 exact command sequence (`inkloop`, `inkloop poll --agent-reply`, `inkloop end`) without re-deriving
-it from `--help` each session.
+it from `--help` each session. This is the most complete onboarding path today; the skill file
+itself is agent-agnostic prose and worth reading even when using a different client.
+
+### GitHub Copilot, Cursor, and other agents
+
+inkloop doesn't yet package equivalents of Claude Code's skill format for other clients. Until it
+does, point the agent at [`skills/inkloop/SKILL.md`](skills/inkloop/SKILL.md)'s Workflow section
+directly — most agents can be told to read a file's instructions and follow them for the rest of a
+session — or paste the workflow steps into a project instructions file the agent already loads
+(`.cursor/rules`, `.github/copilot-instructions.md`, etc.). The commands themselves are identical
+across clients; only how the agent learns to reach for them differs.
 
 ## v1 scope
 
