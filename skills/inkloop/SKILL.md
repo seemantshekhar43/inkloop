@@ -28,16 +28,22 @@ You do not need inkloop installed globally - invoke it with `npx -y inkloop <htm
 
 ## Workflow
 
-1. Write the artifact as a `.html` file under `.inkloop/` in the current project (e.g.
+1. Before writing any HTML, run `npx -y inkloop stencil <id>` for the content shape you're building
+   (`plan`, `comparison`, `table`, `report`, `mockup`, or `diagram` - run `npx -y inkloop stencil` with
+   no id to see the fit/layout/rules for each), plus `npx -y inkloop stencil loopable` every time, which
+   covers loop-safety rules and a `design_baseline` visual-design floor (font stack, spacing, palette,
+   component treatment) to fall back on when there's no user-specified or subject-matched design system
+   to follow instead.
+2. Write the artifact as a `.html` file under `.inkloop/` in the current project (e.g.
    `.inkloop/plan-comparison.html`), creating the directory if needed. This is a convention, not a
    requirement enforced by the tool - inkloop keys the session off the file's absolute path, so any
    location works - but keeping it in `.inkloop/` makes it visible and easy to gitignore alongside
    the rest of the project, rather than scattered in a scratch dir. Prefer resuming/revising an
    existing artifact under `.inkloop/` over writing a new one for the same review thread.
-2. Run `npx -y inkloop <html-file>` to open or resume a review session. It starts a local server and
+3. Run `npx -y inkloop <html-file>` to open or resume a review session. It starts a local server and
    prints a `http://127.0.0.1:<port>/session/<hash>` URL - share that with the human (or open it
    yourself if you're driving the browser too).
-3. Run `npx -y inkloop poll <html-file>` to long-poll for the human's queued annotations. This
+4. Run `npx -y inkloop poll <html-file>` to long-poll for the human's queued annotations. This
    blocks, retrying automatically on each empty result, until feedback actually arrives - leave it
    running rather than working around it. Progress goes to stderr; the only thing written to stdout
    is the final payload, as JSON: `{ items, next_step, ... }`. `next_step` spells out the literal
@@ -45,17 +51,17 @@ You do not need inkloop installed globally - invoke it with `npx -y inkloop <htm
    ended (`ended`/`endedBy` ride along too in that case).
    On rounds after the first, pass `--agent-reply "<one-line summary of what changed>"` so the
    round-history panel shows your reply before the poll blocks again.
-4. Revise the `.html` file in place based on the feedback. No need to re-run `inkloop <file>` - the
+5. Revise the `.html` file in place based on the feedback. No need to re-run `inkloop <file>` - the
    open browser tab live-reloads on its own, preserving scroll position and any unsent draft.
-5. Repeat steps 3-4 until the review is done.
-6. Run `npx -y inkloop end <html-file>` to close out the session from your side.
+6. Repeat steps 4-5 until the review is done.
+7. Run `npx -y inkloop end <html-file>` to close out the session from your side.
 
 ## Session & state model
 
 - Sessions are keyed off the artifact's absolute file path (hashed to 16 hex chars) - no accounts,
   no server-side project setup.
 - Session bookkeeping (feedback, round history, status) lives under `~/.inkloop/<hash>/` - this is
-  separate from the artifact file itself (which belongs in the project's own `.inkloop/`, per step 1
+  separate from the artifact file itself (which belongs in the project's own `.inkloop/`, per step 2
   above) and from any git repo. Nothing leaves the machine either way.
 - If the human ends the session from the browser, a later plain `inkloop <file>` refuses to reopen
   it. Only pass `--reopen` when the human actually asks for further review - don't reopen a
@@ -90,5 +96,6 @@ Each item `inkloop poll` hands back has:
 
 ## Reference
 
+- `npx -y inkloop stencil` - content-guidance and visual-design-baseline reference (see workflow step 1)
 - `README.md` - core loop, tech stack
 - `docs/plan.md` - prior-art study, v1 scope, naming rationale
