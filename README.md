@@ -58,9 +58,10 @@ command set (`poll`, `end`, `stop`, `stencil`, `--reopen`).
 
 [`skills/inkloop/SKILL.md`](skills/inkloop/SKILL.md) packages the core loop above as a Claude Code
 skill, so the agent recognizes when an HTML artifact is worth putting through inkloop and knows the
-exact command sequence (`inkloop`, `inkloop poll --agent-reply`, `inkloop end`) without re-deriving
-it from `--help` each session. This is the most complete onboarding path today; the skill file
-itself is agent-agnostic prose and worth reading even when using a different client.
+exact command sequence (`inkloop stencil <id>` for content-guidance before writing the HTML, then
+`inkloop`, `inkloop poll --agent-reply`, `inkloop end`) without re-deriving it from `--help` each
+session. This is the most complete onboarding path today; the skill file itself is agent-agnostic
+prose and worth reading even when using a different client.
 
 ### GitHub Copilot, Cursor, and other agents
 
