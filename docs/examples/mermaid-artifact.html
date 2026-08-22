@@ -73,8 +73,7 @@
     });
 
     document.getElementById("theme-toggle").addEventListener("click", () => {
-      const current = document.documentElement.getAttribute("data-theme");
-      document.documentElement.setAttribute("data-theme", current === "dark" ? "light" : "dark");
+      document.documentElement.setAttribute("data-theme", resolveTheme() === "dark" ? "light" : "dark");
     });
   </script>
 </body>
