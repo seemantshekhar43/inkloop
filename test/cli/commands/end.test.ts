@@ -4,7 +4,7 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { runEndCommand } from "../../../src/cli/commands/end.js";
-import { openOrResumeSession, readSessionRecord } from "../../../src/shared/session-store.js";
+import { endSession, openOrResumeSession, readSessionRecord } from "../../../src/shared/session-store.js";
 
 type WriteFn = typeof process.stdout.write;
 
@@ -68,6 +68,27 @@ void test("ends an opened session with status agent-ended and prints next_step g
 
     const record = await readSessionRecord(artifactPath);
     assert.equal(record?.status, "agent-ended");
+  });
+});
+
+void test("ending an already user-ended session reports endedBy: \"user\", not \"agent\"", async () => {
+  await withTestEnvironment(async (artifactDir) => {
+    const artifactPath = path.join(artifactDir, "artifact.html");
+    await writeFile(artifactPath, "<p>hi</p>", "utf8");
+    await openOrResumeSession(artifactPath);
+    // Simulate the user ending the session from the browser (POST /session/:hash/end) before
+    // the agent's own belt-and-suspenders `inkloop end` call runs.
+    await endSession(artifactPath, "user");
+
+    const { code, text } = await captureWrite(process.stdout, () => runEndCommand(artifactPath));
+    assert.equal(code, 0);
+    const body = JSON.parse(text) as { status: string; endedBy: string; next_step: string };
+    assert.equal(body.status, "ended");
+    assert.equal(body.endedBy, "user");
+    assert.match(body.next_step, /will refuse to reopen it unless run with --reopen/);
+
+    const record = await readSessionRecord(artifactPath);
+    assert.equal(record?.status, "user-ended");
   });
 });
 
