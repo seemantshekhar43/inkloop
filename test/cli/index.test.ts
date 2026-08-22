@@ -1,6 +1,42 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { run } from "../../src/cli/index.js";
+import { mkdtempSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { isMainModuleEntry, run } from "../../src/cli/index.js";
+
+// realpathSync the tmp dir itself first: on macOS, tmpdir() returns a path (/var/folders/...)
+// that's itself a symlink to /private/var/folders/..., so a raw join() under it never
+// string-equals its own realpath - mirroring how import.meta.url is already fully resolved in
+// production, the "moduleRealPath" side of every case below must be a realpath too.
+const dir = realpathSync(mkdtempSync(join(tmpdir(), "inkloop-main-module-")));
+
+void test("isMainModuleEntry: true when invoked directly by its own real path", () => {
+  const real = join(dir, "direct.js");
+  writeFileSync(real, "");
+  assert.equal(isMainModuleEntry(real, real), true);
+});
+
+void test("isMainModuleEntry: true when invoked via a symlink to the real path (issue #110)", () => {
+  const real = join(dir, "index.js");
+  const link = join(dir, "inkloop");
+  writeFileSync(real, "");
+  symlinkSync(real, link);
+  assert.equal(isMainModuleEntry(link, real), true);
+});
+
+void test("isMainModuleEntry: false for an unrelated file", () => {
+  const real = join(dir, "index2.js");
+  const other = join(dir, "other.js");
+  writeFileSync(real, "");
+  writeFileSync(other, "");
+  assert.equal(isMainModuleEntry(other, real), false);
+});
+
+void test("isMainModuleEntry: falls back to string equality when the invoked path doesn't exist", () => {
+  assert.equal(isMainModuleEntry("/no/such/path.js", "/no/such/path.js"), true);
+  assert.equal(isMainModuleEntry("/no/such/path.js", "/other/path.js"), false);
+});
 
 type WriteFn = typeof process.stdout.write;
 
