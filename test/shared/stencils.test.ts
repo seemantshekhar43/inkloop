@@ -29,7 +29,9 @@ void test("getStencil returns undefined for an unknown id", () => {
 void test("loopable's rules ship a baseline visual-design expectation (issue #89)", () => {
   const stencil = getStencil("loopable");
   assert.ok(
-    stencil?.rules.some((r) => /<style>/.test(r) && /font/i.test(r) && /color/i.test(r) && /spacing/i.test(r)),
+    stencil?.rules.some(
+      (r) => /<style>/.test(r) && /font/i.test(r) && /color/i.test(r) && /spacing/i.test(r),
+    ),
     "loopable rules should ask for a real <style> block with font/color/spacing choices",
   );
 });
@@ -60,6 +62,18 @@ void test("DESIGN_BASELINE's Tables component references overflow-x safety direc
   const tables = DESIGN_BASELINE.components.find((c) => c.startsWith("Tables:"));
   assert.ok(tables, "expected a Tables component entry");
   assert.match(tables ?? "", /overflow-x/);
+});
+
+void test("DESIGN_BASELINE ships a mockup device-frame component (issue #99)", () => {
+  const mockupFrame = DESIGN_BASELINE.components.find((c) => c.startsWith("Mockup device frame"));
+  assert.ok(mockupFrame, "expected a Mockup device frame component entry");
+  assert.match(mockupFrame ?? "", /mockup-browser/);
+});
+
+void test("DESIGN_BASELINE ships a dated timeline pattern distinct from the numbered step pattern (issue #99)", () => {
+  const timeline = DESIGN_BASELINE.patterns.find((p) => p.startsWith("Timeline"));
+  assert.ok(timeline, "expected a Timeline pattern entry");
+  assert.match(timeline ?? "", /\.timeline time/);
 });
 
 void test("DESIGN_BASELINE's theming ships a concrete token-based dark-mode mechanism (issue #98)", () => {
