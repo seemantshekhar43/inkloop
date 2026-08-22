@@ -4,7 +4,16 @@ import { DESIGN_BASELINE, getStencil, listStencils } from "../../src/shared/sten
 
 void test("listStencils returns the full stencil set with the ids named in issue #86", () => {
   const ids = listStencils().map((s) => s.id);
-  assert.deepEqual(ids, ["plan", "comparison", "table", "report", "mockup", "diagram", "code", "loopable"]);
+  assert.deepEqual(ids, [
+    "plan",
+    "comparison",
+    "table",
+    "report",
+    "mockup",
+    "diagram",
+    "code",
+    "loopable",
+  ]);
 });
 
 void test("every stencil has all five non-empty sections", () => {
