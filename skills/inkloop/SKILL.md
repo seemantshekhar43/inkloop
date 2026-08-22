@@ -1,6 +1,6 @@
 ---
 name: inkloop
-description: Turn an HTML artifact - plan, comparison, diagram, table, report, prototype, UI mockup - into a browser review surface a human can annotate and reply to, using the inkloop CLI.
+description: Turn an HTML artifact - plan, comparison, diagram, table, report, code diff, prototype, UI mockup - into a browser review surface a human can annotate and reply to, using the inkloop CLI.
 argument-hint: <html-file>
 metadata:
   hermes:
@@ -18,8 +18,8 @@ open tab live-reloads to show the change - no accounts, no cloud dependency, eve
 ## When to use
 
 Use inkloop whenever you're about to hand a human an HTML artifact that's better reviewed and
-iterated on interactively than in prose - a plan, comparison, diagram, table, report, prototype, or
-UI mockup rendered as HTML. This isn't narrowly "reviewing HTML for bugs" - it's the same broad
+iterated on interactively than in prose - a plan, comparison, diagram, table, report, code diff,
+prototype, or UI mockup rendered as HTML. This isn't narrowly "reviewing HTML for bugs" - it's the same broad
 goal as any visual-artifact review loop: if the content would be clearer as something the human can
 point at and mark up rather than read about, build it as an HTML artifact and put it through
 inkloop.
@@ -31,9 +31,12 @@ You do not need inkloop installed globally - invoke it with `npx -y inkloop <htm
 1. Before writing any HTML, run `npx -y inkloop stencil <id>` for the content shape you're building
    (`plan`, `comparison`, `table`, `report`, `mockup`, `diagram`, or `code` - run `npx -y inkloop stencil` with
    no id to see the fit/layout/rules for each), plus `npx -y inkloop stencil loopable` every time, which
-   covers loop-safety rules and a `design_baseline` visual-design floor (font stack, spacing, palette,
-   component treatment) to fall back on when there's no user-specified or subject-matched design system
-   to follow instead.
+   covers loop-safety rules and a `design_baseline` visual-design floor: font stack, spacing, palette,
+   component/pattern examples (including a mockup device frame and a dated timeline), a concrete
+   theming mechanism (CSS custom properties plus a `data-theme` toggle), and a pinned CDN
+   component-library default (Tailwind + DaisyUI) - to fall back on only once you've checked for a
+   user-specified look, a project design.md/style guide, or the subject's own existing design system
+   first, and to state explicitly which of those you ended up using.
 2. Write the artifact as a `.html` file under `.inkloop/` in the current project (e.g.
    `.inkloop/plan-comparison.html`), creating the directory if needed. This is a convention, not a
    requirement enforced by the tool - inkloop keys the session off the file's absolute path, so any

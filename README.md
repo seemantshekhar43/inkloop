@@ -12,6 +12,14 @@ detection flagging text-range annotations whose anchored text has since changed 
 [`docs/plan.md`](docs/plan.md) for the full prior-art study, v1 scope decision, naming rationale, and tech
 stack proposal.
 
+Also ships `inkloop stencil <id>` (issue #86, extended through #90/#98-#103): authoring-time
+content-guidance for the eight content shapes inkloop reviews well (`plan`, `comparison`, `table`,
+`report`, `mockup`, `diagram`, `code`, plus the cross-cutting `loopable`), each with fit/layout/rules/
+snags, and a shared `design_baseline` visual-design floor - font stack, spacing, palette, component
+examples, a theming mechanism, and a concrete pinned CDN-component-library default - for when there's
+no user-specified or subject-matched design system to follow instead. Run `inkloop stencil` with no id
+for the full list.
+
 ## Why
 
 Reviewing agent-generated HTML has largely fallen back to screenshots and prose descriptions. inkloop
@@ -52,7 +60,9 @@ written - see [Tech stack](#tech-stack) below.
 This starts a local server, prints a session URL to open in a browser, and works identically
 whether it's invoked by a human, a Claude Code skill, or any other agent shelling out to it — the
 CLI and the served artifact don't care what wrote the HTML. `inkloop --help` documents the full
-command set (`poll`, `end`, `stop`, `stencil`, `--reopen`).
+command set (`poll`, `end`, `stop`, `stencil`, `--reopen`). Verified end to end through this exact
+`npx -y inkloop` path (issue #110 fixed a bug where the compiled CLI silently no-op'd when invoked
+via any symlinked bin — a global install, `npm link`, or `npx` all resolve through one).
 
 ### Claude Code
 
@@ -84,8 +94,11 @@ for the reasoning.
 *Rendering* a Mermaid diagram, by contrast, needs no inkloop support at all and isn't deferred to
 anything — an artifact can already bring its own self-contained Mermaid script (a `.mermaid` block plus a
 CDN-imported render call) and it renders identically whether opened through `inkloop <file>` or as a
-standalone `.html` file. See [`docs/examples/mermaid-artifact.html`](docs/examples/mermaid-artifact.html)
-for a verified working example.
+standalone `.html` file. If the artifact also supports a dark-mode/theme toggle (see the `design_baseline`
+theming mechanism above), the diagram should re-render on theme change too, not just render once at
+whatever theme was active on first paint (issue #100) — see
+[`docs/examples/mermaid-artifact.html`](docs/examples/mermaid-artifact.html) for a verified working
+example of both.
 
 ## Tech stack
 
