@@ -33,8 +33,13 @@ export async function runEndCommand(
     throw err;
   }
 
+  // Report the record's real status, not the fact that this CLI call was agent-initiated:
+  // endSession() never downgrades an already user-ended session (see its own no-downgrade
+  // guard), so endedBy must agree with next_step, which is sourced from record.status too.
+  const endedBy = record.status === "user-ended" ? "user" : "agent";
+
   process.stdout.write(
-    `${JSON.stringify({ status: "ended", endedBy: "agent", next_step: nextStepGuidance(record.status) }, null, 2)}\n`,
+    `${JSON.stringify({ status: "ended", endedBy, next_step: nextStepGuidance(record.status) }, null, 2)}\n`,
   );
   return 0;
 }
