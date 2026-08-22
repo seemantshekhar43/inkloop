@@ -25,7 +25,7 @@ function captureWrite(
 void test("with no id, lists all stencil ids and exits 0", () => {
   const { code, text } = captureWrite(process.stdout, () => runStencilCommand());
   assert.equal(code, 0);
-  for (const id of ["plan", "comparison", "table", "report", "mockup", "diagram", "loopable"]) {
+  for (const id of ["plan", "comparison", "table", "report", "mockup", "diagram", "code", "loopable"]) {
     assert.match(text, new RegExp(id));
   }
 });
@@ -42,7 +42,7 @@ void test("with a known id, expands its sections and exits 0", () => {
 });
 
 void test("every stencil id's output includes design_baseline (issue #89)", () => {
-  for (const id of ["plan", "comparison", "table", "report", "mockup", "diagram", "loopable"]) {
+  for (const id of ["plan", "comparison", "table", "report", "mockup", "diagram", "code", "loopable"]) {
     const { code, text } = captureWrite(process.stdout, () => runStencilCommand(id));
     assert.equal(code, 0, id);
     assert.match(text, /## design_baseline/, id);

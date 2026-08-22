@@ -29,7 +29,7 @@ You do not need inkloop installed globally - invoke it with `npx -y inkloop <htm
 ## Workflow
 
 1. Before writing any HTML, run `npx -y inkloop stencil <id>` for the content shape you're building
-   (`plan`, `comparison`, `table`, `report`, `mockup`, or `diagram` - run `npx -y inkloop stencil` with
+   (`plan`, `comparison`, `table`, `report`, `mockup`, `diagram`, or `code` - run `npx -y inkloop stencil` with
    no id to see the fit/layout/rules for each), plus `npx -y inkloop stencil loopable` every time, which
    covers loop-safety rules and a `design_baseline` visual-design floor (font stack, spacing, palette,
    component treatment) to fall back on when there's no user-specified or subject-matched design system
