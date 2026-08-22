@@ -62,6 +62,16 @@ void test("DESIGN_BASELINE's Tables component references overflow-x safety direc
   assert.match(tables ?? "", /overflow-x/);
 });
 
+void test("DESIGN_BASELINE's theming ships a concrete token-based dark-mode mechanism (issue #98)", () => {
+  const theming = DESIGN_BASELINE.theming;
+  assert.match(theming, /:root/);
+  assert.match(theming, /@media \(prefers-color-scheme: dark\)/);
+  assert.match(theming, /:not\(\[data-theme="light"\]\)/);
+  assert.match(theming, /\[data-theme="dark"\]/);
+  assert.match(theming, /--bg/);
+  assert.match(theming, /--accent/);
+});
+
 void test("DESIGN_BASELINE has all non-empty issue #90 sections", () => {
   assert.ok(DESIGN_BASELINE.patterns.length > 0);
   assert.ok(DESIGN_BASELINE.responsive.length > 0);
