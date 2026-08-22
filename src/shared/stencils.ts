@@ -210,7 +210,7 @@ const STENCILS: readonly Stencil[] = [
   {
     id: "mockup",
     title: "Mockup",
-    fit: "A UI or product surface being proposed or reviewed for its own visual/interaction design - a screen, a component, a flow. Not the right choice for a diagram of system structure (use diagram) or a written spec (use report).",
+    fit: "A UI or product surface being proposed or reviewed for its own visual/interaction design - a screen, a component, a flow. Not the right choice for a diagram of system structure (use diagram), a written spec (use report), or a diff/patch review (use code).",
     layout:
       "Render the actual UI, not a description of it - real HTML/CSS approximating the target surface, not a wireframe box-and-label sketch unless the review is explicitly about layout skeleton only.",
     rules: [
