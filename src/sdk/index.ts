@@ -310,19 +310,44 @@
   );
 
   /**
+   * True for a same-document fragment link (e.g. `href="#some-id"`) pointing at the page's own
+   * current path/query — the browser's native fragment navigation only scrolls within the
+   * existing document, it can never navigate the iframe away, so issue #37's guard just below has
+   * no real navigation to block here (issue #116). Anchor properties (pathname/search/hash/origin)
+   * are already resolved against the document, so this doesn't need its own URL parsing.
+   */
+  function isSameDocumentFragmentLink(link: HTMLAnchorElement): boolean {
+    return (
+      link.hash !== "" &&
+      link.origin === window.location.origin &&
+      link.pathname === window.location.pathname &&
+      link.search === window.location.search
+    );
+  }
+
+  /**
    * Never let the artifact's own links navigate the review iframe away (issue #37) — a reviewer
    * clicking or selecting an ordinary `<a href>` (a citation, a "view source" link, anything an
    * agent legitimately adds) would otherwise lose the whole review surface with no way back short
    * of reloading the session URL. Applies regardless of picking mode: even outside element-picking,
    * a click/selection on a link is still a click inside the artifact, not a request to browse away
    * from it.
+   *
+   * Exempts same-document fragment links (issue #116): an internal cross-reference like
+   * `href="#f-simplify-debts"` was getting the same blanket preventDefault() as a real navigating
+   * link, silently breaking table-of-contents/build-order patterns several stencils recommend,
+   * even though a fragment-only link can't lose the review surface in the first place.
    */
   document.addEventListener(
     "click",
     (event) => {
       const target = event.target;
       if (!(target instanceof Element) || isSdkNode(target)) return;
-      if (target.closest("a[href]")) event.preventDefault();
+      const link = target.closest("a[href]");
+      if (!link || !(link instanceof HTMLAnchorElement) || isSameDocumentFragmentLink(link)) {
+        return;
+      }
+      event.preventDefault();
     },
     { capture: true },
   );
@@ -390,13 +415,30 @@
   window.addEventListener("message", (event) => {
     if (event.source !== window.parent || event.origin !== window.location.origin) return;
     const data = event.data as
-      | { type?: string; comment?: string; id?: string; queue?: FeedbackItem[]; scrollY?: number }
+      | {
+          type?: string;
+          comment?: string;
+          id?: string;
+          queue?: FeedbackItem[];
+          scrollY?: number;
+          active?: boolean;
+        }
       | undefined;
     if (!data || typeof data.type !== "string") return;
 
     switch (data.type) {
       case "inkloop:toggle-element-picker":
         setPickingElement(!pickingElement);
+        break;
+      case "inkloop:set-picking":
+        // Issue #117: unlike the toggle above, this sets picking to an explicit value rather
+        // than flipping it — used by the shell to resync a freshly-reloaded iframe with its own
+        // still-on picking state after a live reload, where reusing the toggle message naively
+        // would risk a double-toggle race (see review-shell.ts's inkloop:ready handler). A no-op
+        // when the value already matches, so this is safe to send unconditionally on every load.
+        if (typeof data.active === "boolean" && data.active !== pickingElement) {
+          setPickingElement(data.active);
+        }
         break;
       case "inkloop:add-comment":
         if (typeof data.comment === "string") queueItem({ kind: "general" }, data.comment);

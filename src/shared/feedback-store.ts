@@ -74,28 +74,84 @@ async function writeFeedbackAtomic(
 }
 
 /**
- * Reads only the feedback items an `inkloop poll` call hasn't already delivered to the agent
- * (no `deliveredAt` yet). Read-only — unlike takePendingFeedback, this doesn't mark anything as
- * delivered, so it's safe for the poll loop's own has-anything-changed checks between requests.
+ * How long a claimed-but-unconfirmed item stays hidden from readPendingFeedback/
+ * claimPendingFeedback before it's treated as abandoned and becomes claimable again (issue #115).
+ * A real poll response is flushed within milliseconds of being claimed, so this just needs to
+ * comfortably outlast that — it's not a timeout callers wait out in the normal case, only a
+ * backstop for the abnormal one (the polling process killed, the connection dropped, mid-flight).
+ */
+export const CLAIM_VISIBILITY_MS = 30_000;
+
+function isVisiblyPending(item: FeedbackItem, now: number, claimVisibilityMs: number): boolean {
+  if (item.deliveredAt !== undefined) return false;
+  if (item.claimedAt === undefined) return true;
+  return now - Date.parse(item.claimedAt) >= claimVisibilityMs;
+}
+
+/**
+ * Reads only the feedback items currently available to claim: never delivered, and either never
+ * claimed or claimed long enough ago (CLAIM_VISIBILITY_MS) that the claim is presumed abandoned.
+ * Read-only — unlike claimPendingFeedback, this doesn't mark anything as claimed, so it's safe
+ * for the poll loop's own has-anything-changed checks between requests.
  */
 export async function readPendingFeedback(
   hash: string,
   stateRoot: string = defaultStateRoot(),
+  claimVisibilityMs: number = CLAIM_VISIBILITY_MS,
 ): Promise<FeedbackItem[]> {
   const all = await readFeedback(hash, stateRoot);
-  return all.filter((item) => item.deliveredAt === undefined);
+  const now = Date.now();
+  return all.filter((item) => isVisiblyPending(item, now, claimVisibilityMs));
 }
 
 /**
- * Atomically claims every currently-pending feedback item for a session: marks each with a
- * `deliveredAt` timestamp and persists that back to feedback.json, then returns just the batch
- * that was newly claimed. Delivered items are kept on disk (not deleted) so a full session
- * history survives for issue #21 — only the poll cursor (deliveredAt) advances.
+ * Atomically claims every currently-visible pending item (see readPendingFeedback) for a
+ * session: marks each with a `claimedAt` timestamp and persists that back to feedback.json, then
+ * returns just the batch that was newly claimed. Claiming is deliberately *not* the same as
+ * delivering — see commitDeliveredFeedback — so the poll route can send the claimed batch to the
+ * client and only mark it permanently `deliveredAt` once that response is confirmed flushed
+ * (issue #115). Until then, the claim keeps the batch hidden from other pollers for
+ * claimVisibilityMs; if the response is lost in transit and delivery is never confirmed, the
+ * claim ages out and a later poll reclaims and resends the same items instead of them being lost.
  *
- * There is no cross-process locking here: appendFeedback (browser POST) and takePendingFeedback
+ * There is no cross-process locking here: appendFeedback (browser POST) and claimPendingFeedback
  * (agent poll) are both plain read-modify-write cycles. That's an accepted tradeoff for a
  * single-user local server with low write concurrency (see docs/plan.md §5) rather than a gap to
  * close with a dependency like a file lock or SQLite.
+ */
+export async function claimPendingFeedback(
+  hash: string,
+  stateRoot: string = defaultStateRoot(),
+  claimVisibilityMs: number = CLAIM_VISIBILITY_MS,
+): Promise<FeedbackItem[]> {
+  const all = await readFeedback(hash, stateRoot);
+  const now = Date.now();
+  const claimedAt = new Date(now).toISOString();
+  const claimed: FeedbackItem[] = [];
+  const updated = all.map((item) => {
+    if (!isVisiblyPending(item, now, claimVisibilityMs)) return item;
+    const withClaimedAt = { ...item, claimedAt };
+    claimed.push(withClaimedAt);
+    return withClaimedAt;
+  });
+  if (claimed.length === 0) return [];
+  await writeFeedbackAtomic(hash, updated, stateRoot);
+  return claimed;
+}
+
+/**
+ * Atomically claims every currently-undelivered feedback item and marks it `deliveredAt` in one
+ * step, with no intermediate claimed-but-unconfirmed state. Not used by the poll route (see
+ * claimPendingFeedback + commitDeliveredFeedback for that — issue #115's fix needs the two steps
+ * kept separate so delivery can be deferred until a response is confirmed flushed); kept as a
+ * direct one-shot primitive for callers that don't need that flush-confirmation window. Delivered
+ * items are kept on disk (not deleted) so a full session history survives for issue #21 — only
+ * the poll cursor (deliveredAt) advances.
+ *
+ * There is no cross-process locking here: appendFeedback (browser POST) and takePendingFeedback
+ * are both plain read-modify-write cycles. That's an accepted tradeoff for a single-user local
+ * server with low write concurrency (see docs/plan.md §5) rather than a gap to close with a
+ * dependency like a file lock or SQLite.
  */
 export async function takePendingFeedback(
   hash: string,
@@ -113,6 +169,35 @@ export async function takePendingFeedback(
   if (claimed.length === 0) return [];
   await writeFeedbackAtomic(hash, updated, stateRoot);
   return claimed;
+}
+
+/**
+ * Marks specific feedback ids as permanently delivered, if they aren't already (issue #115).
+ * Pairs with claimPendingFeedback: the poll route claims a batch (hiding it behind claimedAt),
+ * sends it, and only calls this — turning claimedAt into a permanent deliveredAt — once that
+ * response is confirmed flushed. If the response is lost in transit instead (the polling process
+ * is killed, the connection drops) this never runs, the claim simply ages out
+ * (CLAIM_VISIBILITY_MS) once it's stale, and a later poll reclaims and resends the same items
+ * instead of them being lost forever. Idempotent — an id that's already delivered keeps its
+ * original deliveredAt rather than being overwritten.
+ */
+export async function commitDeliveredFeedback(
+  hash: string,
+  ids: string[],
+  stateRoot: string = defaultStateRoot(),
+): Promise<void> {
+  if (ids.length === 0) return;
+  const idSet = new Set(ids);
+  const all = await readFeedback(hash, stateRoot);
+  const deliveredAt = new Date().toISOString();
+  let changed = false;
+  const updated = all.map((item) => {
+    if (!idSet.has(item.id) || item.deliveredAt !== undefined) return item;
+    changed = true;
+    return { ...item, deliveredAt };
+  });
+  if (!changed) return;
+  await writeFeedbackAtomic(hash, updated, stateRoot);
 }
 
 /**

@@ -5,9 +5,10 @@ import { isHostAllowed } from "./host-validation.js";
 import { endSession, nextStepGuidance, readSessionRecordByHash } from "../shared/session-store.js";
 import {
   appendFeedback,
+  claimPendingFeedback,
+  commitDeliveredFeedback,
   markFeedbackDrifted,
   readPendingFeedback,
-  takePendingFeedback,
 } from "../shared/feedback-store.js";
 import { isValidDriftIdBatch, isValidFeedbackBatch } from "../shared/feedback.js";
 import { appendAgentReply, isValidAgentReplyMessage } from "../shared/agent-reply-store.js";
@@ -83,6 +84,29 @@ function sendJson(res: http.ServerResponse, status: number, body: unknown): void
     "Content-Length": Buffer.byteLength(payload),
   });
   res.end(payload);
+}
+
+/**
+ * Like sendJson, but resolves once the response has actually been flushed instead of firing and
+ * forgetting — see handlePollRoute's use of this for why (issue #115). Resolves `true` on a
+ * normal "finish" (the response was fully handed off), `false` if the connection errors or closes
+ * before that happens (client killed mid-flight, dropped connection, etc.), so the caller can
+ * gate an unrecoverable side effect — here, persisting that feedback was delivered — on delivery
+ * actually having gone out rather than merely having been attempted.
+ */
+function sendJsonConfirmed(res: http.ServerResponse, status: number, body: unknown): Promise<boolean> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const settle = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      resolve(ok);
+    };
+    res.once("finish", () => settle(true));
+    res.once("error", () => settle(false));
+    res.once("close", () => settle(false));
+    sendJson(res, status, body);
+  });
 }
 
 function sendHtml(res: http.ServerResponse, status: number, html: string): void {
@@ -190,8 +214,16 @@ function sleep(ms: number): Promise<void> {
  * result as "nothing yet" and re-issues the request, so from the agent's perspective a single
  * `inkloop poll` call blocks indefinitely across as many of these bounded requests as it takes.
  *
- * Claims (marks delivered) whatever it returns via takePendingFeedback, so a subsequent poll
- * never redelivers the same items — see that function's docstring for the persistence model.
+ * Claiming and delivering the items it returns are two separate steps (issue #115), via
+ * claimPendingFeedback + sendJsonConfirmed + commitDeliveredFeedback: claim hides the batch from
+ * other pollers immediately (so two overlapping polls can't both grab it), then it's only turned
+ * into a permanent delivery — commitDeliveredFeedback — once this response is confirmed flushed
+ * to the client. Marking delivered up front, before the response was known to have gone out (the
+ * pre-#115 behavior), meant a claim that got lost in transit — the polling process killed, a
+ * background job dying, the connection dropping — silently and permanently discarded that
+ * feedback: it was on disk as delivered, but no process had ever actually received it. Now a lost
+ * response instead leaves a claim that ages out (feedback-store.ts's CLAIM_VISIBILITY_MS) and
+ * becomes visible again, so a later poll reclaims and resends it instead of it being lost.
  *
  * Also watches the session's own status on every loop iteration (issue #9): if the session ends
  * — whether it was already ended before this call started, or ends mid-wait (e.g. the user
@@ -220,14 +252,22 @@ async function handlePollRoute(
     const ended = guidance !== undefined;
 
     if (pending.length > 0 || ended) {
-      const claimed = pending.length > 0 ? await takePendingFeedback(hash) : [];
-      const body: Record<string, unknown> = { items: claimed };
+      const claimed = pending.length > 0 ? await claimPendingFeedback(hash) : [];
+      const deliveredAt = new Date().toISOString();
+      const items = claimed.map((item) => ({ ...item, deliveredAt }));
+      const body: Record<string, unknown> = { items };
       if (ended && record) {
         body["ended"] = true;
         body["endedBy"] = record.status === "user-ended" ? "user" : "agent";
         body["next_step"] = guidance;
       }
-      sendJson(res, 200, body);
+      const flushed = await sendJsonConfirmed(res, 200, body);
+      if (flushed && items.length > 0) {
+        await commitDeliveredFeedback(
+          hash,
+          items.map((item) => item.id),
+        );
+      }
       return;
     }
     if (Date.now() >= deadline) {
@@ -571,6 +611,14 @@ export function createInkloopServer(
   // slow tick (event-loop or network jitter) doesn't flap the banner on and off.
   const tabs = createTabPresenceTracker(config.pollTimeoutMs * 3);
 
+  // Tracks each in-flight handleRequest call so close() can wait for it (see close() below).
+  // Needed because the poll route's flush-confirmed delivery (issue #115) does a little more
+  // work — persisting commitDeliveredFeedback — *after* the response has already gone out, which
+  // Node's own server.close() has no visibility into (it only waits on socket lifetimes, and a
+  // keep-alive socket can outlive the response by a lot, or the response can finish and the
+  // socket close before our own continuation does).
+  const inFlight = new Set<Promise<void>>();
+
   const server = http.createServer((req, res) => {
     lastActivity = Date.now();
 
@@ -587,12 +635,16 @@ export function createInkloopServer(
       onStop?.("shutdown");
       void close();
     };
-    handleRequest(req, res, config, watchers, tabs, triggerShutdown).catch((err: unknown) => {
-      process.stderr.write(
-        `[inkloop] request handler error: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
-      );
-      if (!res.headersSent) sendJson(res, 500, { error: "internal_error" });
-    });
+    const handling = handleRequest(req, res, config, watchers, tabs, triggerShutdown).catch(
+      (err: unknown) => {
+        process.stderr.write(
+          `[inkloop] request handler error: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}\n`,
+        );
+        if (!res.headersSent) sendJson(res, 500, { error: "internal_error" });
+      },
+    );
+    inFlight.add(handling);
+    void handling.finally(() => inFlight.delete(handling));
   });
 
   let idleTimer: NodeJS.Timeout | undefined;
@@ -618,9 +670,15 @@ export function createInkloopServer(
     if (idleTimer) clearInterval(idleTimer);
     for (const watcher of watchers.values()) watcher.close();
     watchers.clear();
-    return new Promise((resolve, reject) => {
-      server.close((err) => (err ? reject(err) : resolve()));
-    });
+    return Promise.all([
+      new Promise<void>((resolve, reject) => {
+        server.close((err) => (err ? reject(err) : resolve()));
+      }),
+      // Wait out any handler still doing post-response work (see inFlight's own comment) so
+      // callers of close() can rely on all of a request's persistence having actually happened
+      // by the time close() resolves, not just the response having been sent.
+      Promise.all(inFlight),
+    ]).then(() => undefined);
   }
 
   return { server, listening, close };
