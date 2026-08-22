@@ -67,6 +67,13 @@ void test("DESIGN_BASELINE has all non-empty sections (issue #89)", () => {
   assert.ok(DESIGN_BASELINE.components.length > 0);
 });
 
+void test("DESIGN_BASELINE's priority prompts stating which tier was used (issue #102)", () => {
+  assert.ok(
+    DESIGN_BASELINE.priority.some((p) => /state which/i.test(p) && /tier/i.test(p)),
+    "priority should ask the agent to state which tier it used and why when delivering the artifact",
+  );
+});
+
 void test("DESIGN_BASELINE names a component-library fallback and subject-fit note (issue #90)", () => {
   assert.ok(
     DESIGN_BASELINE.priority.some((p) => /CDN/.test(p) && /fit/i.test(p)),
