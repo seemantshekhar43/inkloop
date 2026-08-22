@@ -81,6 +81,14 @@ void test("DESIGN_BASELINE names a component-library fallback and subject-fit no
   );
 });
 
+void test("DESIGN_BASELINE's CDN tier names a concrete pinned default (issue #103)", () => {
+  const cdnTier = DESIGN_BASELINE.priority.find((p) => /CDN-loaded/.test(p));
+  assert.ok(cdnTier, "expected a CDN-tier priority entry");
+  assert.match(cdnTier ?? "", /daisyui@5\.5\.19/);
+  assert.match(cdnTier ?? "", /@tailwindcss\/browser@4\.2\.4/);
+  assert.match(cdnTier ?? "", /data-theme/);
+});
+
 void test("DESIGN_BASELINE's components ship a concrete example per rule (issue #90)", () => {
   for (const component of DESIGN_BASELINE.components) {
     assert.match(component, /Example:/, component);
