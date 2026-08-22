@@ -5,13 +5,30 @@
   never needs a Mermaid dependency of its own, because injectSdkScript only ever adds one
   <script src="/sdk.js"> tag before </body> and never touches the rest of the artifact.
 
+  Theme-aware (issue #100, follow-up to #97/#98): re-resolves and re-renders the diagram
+  whenever the artifact's theme changes, so a diagram never gets stuck rendered in the wrong
+  theme if the page supports the dark-mode mechanism from #98 (a `data-theme` attribute on
+  <html>, or the OS-level prefers-color-scheme). Without this, a Mermaid diagram embedded in a
+  theme-aware artifact renders once at whatever theme was active on first paint and never
+  updates — a real correctness bug, not just a taste gap.
+
   Verified: opening this file via `inkloop <path>` renders the flowchart inside the review
   shell's iframe exactly as it does when opening the raw .html file directly, no inkloop server
-  running. Mermaid is MIT-licensed — free to use, no attribution/fee obligations beyond the
-  license notice bundled in the library.
+  running, in both light and dark, and re-renders live when the theme toggle button is used.
+  Mermaid is MIT-licensed — free to use, no attribution/fee obligations beyond the license
+  notice bundled in the library.
 -->
 <html>
-<head><meta charset="utf-8"><title>Mermaid artifact example</title></head>
+<head>
+<meta charset="utf-8"><title>Mermaid artifact example</title>
+<style>
+  :root { --bg: #fff; --text: #1a1a1a; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #16161a; --text: #e8e8ea; } }
+  :root[data-theme="dark"] { --bg: #16161a; --text: #e8e8ea; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, sans-serif; padding: 24px; }
+  button { margin-top: 12px; }
+</style>
+</head>
 <body>
   <h1>Mermaid rendering check</h1>
   <div class="mermaid">
@@ -20,10 +37,45 @@
       B -->|Yes| C[Do thing]
       B -->|No| D[Skip]
   </div>
+  <button type="button" id="theme-toggle">Toggle theme</button>
   <script type="module">
     import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
-    mermaid.initialize({ startOnLoad: false, securityLevel: "strict" });
-    mermaid.run({ querySelector: ".mermaid" });
+
+    const diagrams = Array.from(document.querySelectorAll(".mermaid"));
+    // Mermaid replaces each node's contents with rendered SVG and marks it processed; keep the
+    // original source around so a later re-render has something to start from again.
+    for (const el of diagrams) el.dataset.src = el.textContent;
+
+    function resolveTheme() {
+      const explicit = document.documentElement.getAttribute("data-theme");
+      if (explicit === "dark") return "dark";
+      if (explicit === "light") return "default";
+      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "default";
+    }
+
+    async function renderAll() {
+      mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: resolveTheme() });
+      for (const el of diagrams) {
+        el.removeAttribute("data-processed");
+        el.textContent = el.dataset.src;
+      }
+      await mermaid.run({ nodes: diagrams });
+    }
+
+    await renderAll();
+
+    // Re-render on an OS-level scheme change and on any data-theme/class/style toggle the
+    // artifact's own script makes (the #98 theming mechanism's attribute-override convention).
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderAll);
+    new MutationObserver(renderAll).observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme", "class", "style"],
+    });
+
+    document.getElementById("theme-toggle").addEventListener("click", () => {
+      const current = document.documentElement.getAttribute("data-theme");
+      document.documentElement.setAttribute("data-theme", current === "dark" ? "light" : "dark");
+    });
   </script>
 </body>
 </html>
