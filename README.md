@@ -87,11 +87,11 @@ across clients; only how the agent learns to reach for them differs.
 In scope: the core loop above, exactly as it is.
 
 Deferred to v2 (deliberately, not dropped): a passive layout/QA issue inbox, and letting the reviewer
-*edit* a Mermaid diagram inline as an Excalidraw-style whiteboard. Both are standout differentiators of
+_edit_ a Mermaid diagram inline as an Excalidraw-style whiteboard. Both are standout differentiators of
 the closest prior art (`lavish-axi`) but also its most complex pieces — see [`docs/plan.md`](docs/plan.md)
 for the reasoning.
 
-*Rendering* a Mermaid diagram, by contrast, needs no inkloop support at all and isn't deferred to
+_Rendering_ a Mermaid diagram, by contrast, needs no inkloop support at all and isn't deferred to
 anything — an artifact can already bring its own self-contained Mermaid script (a `.mermaid` block plus a
 CDN-imported render call) and it renders identically whether opened through `inkloop <file>` or as a
 standalone `.html` file. If the artifact also supports a dark-mode/theme toggle (see the `design_baseline`
