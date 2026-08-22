@@ -1191,6 +1191,14 @@ export function renderReviewShell(hash: string): string {
       // position, since a full iframe reload wipes the SDK's in-memory state but not this
       // shell's own (items/lastScrollY survive here untouched).
       postToFrame({ type: 'inkloop:restore-draft', queue: items, scrollY: lastScrollY });
+      // Issue #117: a live reload also resets the SDK-side pickingElement flag to false, but
+      // this shell's own picking variable (driving the toolbar) survives untouched — same
+      // "iframe reload wipes SDK state, not shell state" gap as the draft/scroll restore above. Left
+      // unhandled, the toolbar kept showing "Stop Sidenote" while the freshly-reloaded SDK had
+      // silently gone back to not picking, so clicks did nothing until a manual re-toggle. Sent
+      // as an explicit set (not the toggle message pickBtn's click handler uses) so this can't
+      // race into a double-toggle if inkloop:ready and picking-state ever briefly disagree.
+      postToFrame({ type: 'inkloop:set-picking', active: picking });
     }
   });
 

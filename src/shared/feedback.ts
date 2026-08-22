@@ -36,11 +36,21 @@ export interface FeedbackItem {
   /**
    * ISO-8601 timestamp set server-side (never by the client) once an `inkloop poll` call has
    * delivered this item to the agent. Undefined means still pending. See
-   * shared/feedback-store.ts's takePendingFeedback — this is what lets poll return only items
-   * the agent hasn't already seen, while still keeping delivered items on disk for history
-   * (issue #21) instead of deleting them.
+   * shared/feedback-store.ts's claimPendingFeedback/commitDeliveredFeedback — this is what lets
+   * poll return only items the agent hasn't already seen, while still keeping delivered items on
+   * disk for history (issue #21) instead of deleting them.
    */
   deliveredAt?: string;
+  /**
+   * ISO-8601 timestamp set server-side once a poll response has claimed this item but before
+   * that response is confirmed to have reached the client (issue #115). A claimed item is hidden
+   * from a subsequent poll only while claimedAt is recent (see feedback-store.ts's
+   * CLAIM_VISIBILITY_MS) — if the response carrying it never actually arrives (the polling
+   * process is killed, the connection drops) the claim ages out and the item becomes visible
+   * again instead of being lost forever. Superseded by deliveredAt once the response is confirmed
+   * flushed.
+   */
+  claimedAt?: string;
   /**
    * Server-assigned round number: all items appended together in one POST /feedback batch (one
    * browser "Send" click) share the same round, and rounds increment session-wide. Never set by

@@ -5,6 +5,8 @@ import os from "node:os";
 import path from "node:path";
 import {
   appendFeedback,
+  claimPendingFeedback,
+  commitDeliveredFeedback,
   markFeedbackDrifted,
   readFeedback,
   readPendingFeedback,
@@ -122,6 +124,65 @@ void test("readPendingFeedback and takePendingFeedback only ever see items queue
     claimed.map((i) => i.id),
     ["2"],
   );
+});
+
+void test("claimPendingFeedback hides a claimed batch, and commitDeliveredFeedback makes that permanent", async () => {
+  const stateRoot = await tempStateRoot();
+  const hash = "4".repeat(16);
+  await appendFeedback(hash, [item("1"), item("2")], stateRoot);
+
+  const claimed = await claimPendingFeedback(hash, stateRoot);
+  assert.deepEqual(
+    claimed.map((i) => i.id),
+    ["1", "2"],
+  );
+  assert.ok(claimed.every((i) => typeof i.claimedAt === "string" && i.deliveredAt === undefined));
+
+  // Claimed but not yet confirmed delivered: hidden from a second claim, and not deliveredAt on
+  // disk yet — this is the window a poll response spends between being claimed and being flushed.
+  assert.deepEqual(await claimPendingFeedback(hash, stateRoot), []);
+  assert.deepEqual(await readPendingFeedback(hash, stateRoot), []);
+  assert.ok((await readFeedback(hash, stateRoot)).every((i) => i.deliveredAt === undefined));
+
+  await commitDeliveredFeedback(
+    hash,
+    claimed.map((i) => i.id),
+    stateRoot,
+  );
+  const all = await readFeedback(hash, stateRoot);
+  assert.ok(all.every((i) => typeof i.deliveredAt === "string"));
+});
+
+void test("issue #115: a claim that's never confirmed delivered ages out and is reclaimed instead of being lost", async () => {
+  const stateRoot = await tempStateRoot();
+  const hash = "5".repeat(16);
+  await appendFeedback(hash, [item("1")], stateRoot);
+
+  // Simulate a poll response that claimed the item but never got confirmed (the process was
+  // killed, the connection dropped, before commitDeliveredFeedback ran) — a tiny visibility
+  // window so the test doesn't have to wait out the real 30s default.
+  const claimVisibilityMs = 20;
+  const firstClaim = await claimPendingFeedback(hash, stateRoot, claimVisibilityMs);
+  assert.deepEqual(
+    firstClaim.map((i) => i.id),
+    ["1"],
+  );
+
+  // Still within the visibility window — genuinely hidden, not lost.
+  assert.deepEqual(await claimPendingFeedback(hash, stateRoot, claimVisibilityMs), []);
+
+  await new Promise((resolve) => setTimeout(resolve, claimVisibilityMs + 10));
+
+  // The abandoned claim aged out: a fresh poll reclaims and can redeliver the same item rather
+  // than it being invisible forever.
+  const reclaimed = await claimPendingFeedback(hash, stateRoot, claimVisibilityMs);
+  assert.deepEqual(
+    reclaimed.map((i) => i.id),
+    ["1"],
+  );
+
+  await commitDeliveredFeedback(hash, ["1"], stateRoot);
+  assert.equal((await readFeedback(hash, stateRoot))[0]?.deliveredAt !== undefined, true);
 });
 
 void test("markFeedbackDrifted flags matching ids, is idempotent, and ignores unknown ids", async () => {

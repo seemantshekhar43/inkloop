@@ -19,7 +19,25 @@ void test("issue #37: link clicks inside the artifact are always prevented, not 
   // on any click whose target is inside an <a href>, regardless of pickingElement — otherwise a
   // reviewer clicking/selecting an ordinary artifact link navigates the whole review iframe away.
   assert.match(sdkSource, /target\.closest\("a\[href\]"\)/);
-  assert.match(sdkSource, /if \(target\.closest\("a\[href\]"\)\)\s*\n?\s*event\.preventDefault\(\);/);
+  assert.match(sdkSource, /event\.preventDefault\(\);/);
+});
+
+void test("issue #116: a same-document fragment link is exempted from the #37 navigation guard", () => {
+  // isSameDocumentFragmentLink must exist and check the resolved anchor's hash/origin/pathname/
+  // search against the current document, and the click guard must consult it before blocking —
+  // otherwise an internal cross-reference (a table of contents, a build-order anchor) is just as
+  // dead as an actual off-page navigation.
+  assert.match(sdkSource, /function isSameDocumentFragmentLink\(link\)/);
+  assert.match(sdkSource, /link\.hash !== ""/);
+  assert.match(sdkSource, /link\.origin === window\.location\.origin/);
+  assert.match(sdkSource, /link\.pathname === window\.location\.pathname/);
+  assert.match(sdkSource, /link\.search === window\.location\.search/);
+
+  const guardIndex = sdkSource.indexOf('target.closest("a[href]")');
+  assert.ok(guardIndex >= 0, "expected the link-navigation guard to be present");
+  const preventDefaultIndex = sdkSource.indexOf("event.preventDefault();", guardIndex);
+  const guardBody = sdkSource.slice(guardIndex, preventDefaultIndex);
+  assert.match(guardBody, /isSameDocumentFragmentLink\(link\)/);
 });
 
 void test("issue #37: the link-navigation guard is registered before the element-picker click handler", () => {
@@ -64,6 +82,19 @@ void test("issue #54: picking mode is not turned off when an element is picked",
   const clickHandlerEnd = sdkSource.indexOf("showComposerAt(", clickHandlerStart);
   const clickHandlerBody = sdkSource.slice(clickHandlerStart, clickHandlerEnd);
   assert.doesNotMatch(clickHandlerBody, /setPickingElement\(false\)/);
+});
+
+void test("issue #117: inkloop:set-picking sets picking mode to an explicit value rather than toggling it", () => {
+  // A plain re-send of the toggle message (inkloop:toggle-element-picker) would flip picking mode
+  // relative to whatever it currently is — fine for a user click, wrong for the shell resyncing a
+  // freshly-reloaded iframe, where it needs to force a known value instead. This message must call
+  // setPickingElement with data.active directly, not flip pickingElement.
+  const caseIndex = sdkSource.indexOf('case "inkloop:set-picking"');
+  assert.ok(caseIndex >= 0, "expected an inkloop:set-picking case in the message handler");
+  const nextCaseIndex = sdkSource.indexOf("case ", caseIndex + 1);
+  const caseBody = sdkSource.slice(caseIndex, nextCaseIndex >= 0 ? nextCaseIndex : undefined);
+  assert.match(caseBody, /setPickingElement\(data\.active\)/);
+  assert.doesNotMatch(caseBody, /setPickingElement\(!pickingElement\)/);
 });
 
 void test("issue #62: hover-highlight and click-pick exclude <body>/<html> so the highlight clears over empty space", () => {

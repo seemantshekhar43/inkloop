@@ -113,6 +113,22 @@ void test("live reload (issue #8): long-polls /reload, reloads the iframe on a v
   assert.match(html, /data\.type === 'inkloop:scroll'/);
 });
 
+void test("issue #117: inkloop:ready also resyncs the freshly-reloaded SDK's picking state, via an explicit set rather than a toggle", () => {
+  const html = renderReviewShell(HASH);
+  const readyHandlerMatch = html.match(
+    /data\.type === 'inkloop:ready'\) \{[\s\S]*?\n {4}\}/,
+  );
+  assert.ok(readyHandlerMatch, "expected an inkloop:ready branch in the message handler");
+  const readyHandler = readyHandlerMatch[0];
+  // Same fix as the draft/scroll restore just above: a live reload wipes the SDK's in-memory
+  // pickingElement flag but not this shell's own `picking`, so the toolbar and the SDK silently
+  // disagree until this resync. Uses 'inkloop:set-picking' (an explicit value), not
+  // 'inkloop:toggle-element-picker' (the pickBtn click handler's message) — reusing the toggle
+  // here would risk a double-toggle race rather than a plain resync.
+  assert.match(readyHandler, /type: 'inkloop:set-picking', active: picking/);
+  assert.doesNotMatch(readyHandler, /inkloop:toggle-element-picker/);
+});
+
 void test("session lifecycle (issue #9): renders an End session control, confirms before ending, and disables interactions once ended", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, /<button type="button" class="end-session" id="end-btn">End session<\/button>/);
