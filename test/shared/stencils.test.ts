@@ -29,7 +29,9 @@ void test("getStencil returns undefined for an unknown id", () => {
 void test("loopable's rules ship a baseline visual-design expectation (issue #89)", () => {
   const stencil = getStencil("loopable");
   assert.ok(
-    stencil?.rules.some((r) => /<style>/.test(r) && /font/i.test(r) && /color/i.test(r) && /spacing/i.test(r)),
+    stencil?.rules.some(
+      (r) => /<style>/.test(r) && /font/i.test(r) && /color/i.test(r) && /spacing/i.test(r),
+    ),
     "loopable rules should ask for a real <style> block with font/color/spacing choices",
   );
 });
