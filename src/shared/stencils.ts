@@ -72,6 +72,7 @@ export const DESIGN_BASELINE: DesignBaseline = {
     "Otherwise, if the artifact represents an existing app or product, match that subject's own design system - its CSS variables/theme config, component library, brand assets, or existing styled pages - even when the artifact is authored from a different repo.",
     "Otherwise, a CDN-loaded component library (e.g. Tailwind's browser runtime plus a component set) is an available option, the same way an artifact can already bring its own Mermaid CDN script (see AGENTS.md) - pick a palette/theme that actually fits the artifact's subject rather than reaching for one fixed default; a mismatched theme (e.g. a luxury/finance look on a fitness-tracker dashboard) reads worse than the plain baseline below.",
     "Only when all of the above come up empty, fall back to the baseline in this reference.",
+    'When delivering the artifact, state which of the above tiers was used and why (issue #102, follow-up to #97) - e.g. "used tier 2: matched the subject app\'s existing Tailwind config" or "used tier 4: baseline, no user spec or existing design system found" - a cheap checkpoint against silently skipping straight to the baseline instead of actually checking the earlier tiers first.',
   ],
   font_stack:
     "A real system-font stack for prose (e.g. -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif), or a monospace stack for code-heavy content - never leave body text on the browser's serif default.",
