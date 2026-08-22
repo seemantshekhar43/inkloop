@@ -50,6 +50,19 @@ attribution/fee obligations beyond the license notice bundled in the library), a
 loaded from the artifact's own script rather than from inkloop's `package.json`, it never
 becomes an inkloop dependency or license obligation either way. See issue #33.
 
+If the artifact supports a dark-mode/theme toggle (the `design_baseline.theming` mechanism from
+issue #98 — CSS custom properties plus a `data-theme` attribute override), the Mermaid diagram
+must re-render on theme change too, not just render once at whatever theme was active on first
+paint (issue #100, follow-up to #97 — this one's closer to a real bug than a taste gap, since
+`design_baseline.theming` already permits an artifact to support dark mode). `mermaid.run()`
+marks each node `data-processed` after rendering and won't re-render it a second time, so keep
+the original diagram source around (e.g. in a `data-src` attribute) and restore it before calling
+`mermaid.run()` again. Resolve the theme the same way the page itself would — an explicit
+`data-theme` attribute first, `prefers-color-scheme` otherwise — and re-resolve/re-render on a
+`matchMedia("(prefers-color-scheme: dark)")` change event and on a `MutationObserver` watching
+`data-theme`/`class`/`style` on `<html>`. See `docs/examples/mermaid-artifact.html` for the full
+worked pattern, including a theme-toggle button that exercises it.
+
 ## Seeding suggested reviewer prompts (no inkloop support needed, issue #73)
 
 The review shell offers a few starter prompts above the composer on first open, instead of a
