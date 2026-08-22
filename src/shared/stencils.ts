@@ -10,7 +10,7 @@
  */
 
 export type StencilId =
-  "plan" | "comparison" | "table" | "report" | "mockup" | "diagram" | "loopable";
+  "plan" | "comparison" | "table" | "report" | "mockup" | "diagram" | "code" | "loopable";
 
 /**
  * Cross-cutting visual-design floor (issue #89, follow-up to #86). Every stencil's `layout`/`rules`
@@ -189,7 +189,7 @@ const STENCILS: readonly Stencil[] = [
   {
     id: "report",
     title: "Report",
-    fit: "Narrative findings with supporting evidence - an investigation writeup, a postmortem, a research summary. Not the right choice when the content is fundamentally a decision between options (use comparison) or a to-do sequence (use plan).",
+    fit: "Narrative findings with supporting evidence - an investigation writeup, a postmortem, a research summary. Not the right choice when the content is fundamentally a decision between options (use comparison), a to-do sequence (use plan), or a diff/patch review (use code).",
     layout:
       "Lead with a short summary/verdict section, then the supporting detail in the order a reader would need it to follow the argument - not necessarily the order it was discovered in.",
     rules: [
@@ -210,7 +210,7 @@ const STENCILS: readonly Stencil[] = [
   {
     id: "mockup",
     title: "Mockup",
-    fit: "A UI or product surface being proposed or reviewed for its own visual/interaction design - a screen, a component, a flow. Not the right choice for a diagram of system structure (use diagram) or a written spec (use report).",
+    fit: "A UI or product surface being proposed or reviewed for its own visual/interaction design - a screen, a component, a flow. Not the right choice for a diagram of system structure (use diagram), a written spec (use report), or a diff/patch review (use code).",
     layout:
       "Render the actual UI, not a description of it - real HTML/CSS approximating the target surface, not a wireframe box-and-label sketch unless the review is explicitly about layout skeleton only.",
     rules: [
@@ -247,9 +247,31 @@ const STENCILS: readonly Stencil[] = [
     ],
   },
   {
+    id: "code",
+    title: "Code",
+    fit: "Reviewing a diff, patch, or before/after source snippet - a PR's changes, a proposed refactor, a migration script. Not the right choice for prose findings about the code (use report) or a full rendered UI (use mockup).",
+    layout:
+      "A unified or side-by-side diff, monospace throughout. Group multiple files/hunks under their own labeled heading rather than concatenating them with no separator. Lead with a one-line summary of what changed and why before the diff itself, the same 'conclusion before evidence' rule as the report stencil.",
+    rules: [
+      "Added and removed lines are visually distinct by more than color alone - a leading `+`/`-` gutter marker or background stripe plus the color, per the palette's status-color rule: color-only signaling fails the same reader a table/comparison's color-only snag would.",
+      "Every line of code is real DOM text, one line per element (e.g. one `<span>`/`<div>` per line), not an image or canvas render of the diff - required for text-range selection and per-line anchoring.",
+      "Unchanged context lines around a hunk are visually de-emphasized (dimmer, not hidden) so the reader's eye still finds the actual change first.",
+      "Syntax highlighting is optional; if omitted, the block still gets the code/log excerpt pattern's monospace background treatment so it doesn't read as unstyled plain text.",
+    ],
+    snags: [
+      "A screenshot or pasted image of a diff instead of real text - breaks selection and search the same way a mockup screenshot does.",
+      "Truncating a long diff with no indication more exists, versus explicitly noting what was cut and why.",
+      "Whitespace-only or reformatting-only hunks left undistinguished from substantive changes, burying the real diff in noise.",
+    ],
+    loop_notes: [
+      "Give each line a stable per-line anchor (e.g. `data-line` or `id`) the same way the table/comparison stencils anchor per-cell/per-row, so a reviewer's comment on one line survives an edit to a different line in the same hunk.",
+      "If a revision changes the diff's line count, don't renumber every existing anchor to close the gap - anchors are stable identifiers, not display positions.",
+    ],
+  },
+  {
     id: "loopable",
     title: "Loopable",
-    fit: "Applies to every artifact reviewed through inkloop, regardless of which of the other six content types it is - the one cross-cutting stencil with no lavish-axi equivalent, since it's specific to inkloop's review-loop mechanics rather than content type.",
+    fit: "Applies to every artifact reviewed through inkloop, regardless of which of the other seven content types it is - the one cross-cutting stencil with no lavish-axi equivalent, since it's specific to inkloop's review-loop mechanics rather than content type.",
     layout:
       "No layout guidance of its own - see whichever content-type stencil applies. This stencil only covers the loop-safety properties every artifact needs on top of that.",
     rules: [

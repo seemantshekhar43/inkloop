@@ -4,7 +4,16 @@ import { DESIGN_BASELINE, getStencil, listStencils } from "../../src/shared/sten
 
 void test("listStencils returns the full stencil set with the ids named in issue #86", () => {
   const ids = listStencils().map((s) => s.id);
-  assert.deepEqual(ids, ["plan", "comparison", "table", "report", "mockup", "diagram", "loopable"]);
+  assert.deepEqual(ids, [
+    "plan",
+    "comparison",
+    "table",
+    "report",
+    "mockup",
+    "diagram",
+    "code",
+    "loopable",
+  ]);
 });
 
 void test("every stencil has all five non-empty sections", () => {
@@ -24,6 +33,19 @@ void test("getStencil returns the matching stencil by id", () => {
 
 void test("getStencil returns undefined for an unknown id", () => {
   assert.equal(getStencil("nonexistent"), undefined);
+});
+
+void test("the code stencil covers per-line anchors and non-color-only diff signaling (issue #101)", () => {
+  const stencil = getStencil("code");
+  assert.equal(stencil?.title, "Code");
+  assert.ok(
+    stencil?.rules.some((r) => /color/i.test(r) && /gutter|marker|stripe/i.test(r)),
+    "code rules should require more than color-only added/removed signaling",
+  );
+  assert.ok(
+    stencil?.loop_notes.some((n) => /data-line|id/i.test(n) && /anchor/i.test(n)),
+    "code loop_notes should call for a stable per-line anchor",
+  );
 });
 
 void test("loopable's rules ship a baseline visual-design expectation (issue #89)", () => {
