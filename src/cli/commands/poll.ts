@@ -95,7 +95,7 @@ function feedbackItemToToonRow(item: FeedbackItem): ToonRow {
  * until feedback is queued, re-issuing the bounded server-side long-poll request automatically
  * on each empty result so the caller's single invocation blocks indefinitely from its own
  * perspective. stdout carries only the final feedback payload (as JSON); every progress banner
- * goes to stderr, matching lavish-axi's agent ergonomics (AGENTS.md / docs/plan.md).
+ * goes to stderr, keeping stdout parseable as a single payload for the caller.
  *
  * The payload is always `{ items, next_step, ... }` (issue #39) rather than a bare items array:
  * `next_step` spells out the literal next command, and — when the session ended mid-wait, with or

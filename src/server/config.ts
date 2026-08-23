@@ -73,9 +73,8 @@ function parseAllowedHosts(value: string | undefined): string[] | "*" {
 
 /**
  * Reads server config from environment variables. Warns to stderr (does not throw) when the
- * bind host is a wildcard address, per the security posture in docs/plan.md: binding beyond
- * loopback exposes an unauthenticated server that can read and serve local files to anything
- * that can reach it.
+ * bind host is a wildcard address: binding beyond loopback exposes an unauthenticated server
+ * that can read and serve local files to anything that can reach it.
  */
 export function loadServerConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const host = env["INKLOOP_HOST"]?.trim() || "127.0.0.1";

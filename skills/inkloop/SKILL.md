@@ -113,4 +113,3 @@ below is `target.*` in the underlying data model, not nested in the TOON output)
 
 - `npx -y inkloop stencil` - content-guidance and visual-design-baseline reference (see workflow step 1)
 - `README.md` - core loop, tech stack
-- `docs/plan.md` - prior-art study, v1 scope, naming rationale

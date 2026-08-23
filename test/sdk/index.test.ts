@@ -139,7 +139,7 @@ void test("issue #42 follow-up: the pick cursor is a custom comment-bubble glyph
   assert.match(sdkSource, /document\.documentElement\.style\.cursor = value \? PICK_CURSOR : "";/);
 });
 
-void test("no-mistakes(review): the pick cursor's hotspot lands on the tip of the bubble's tail, not the bubble body", () => {
+void test("review: the pick cursor's hotspot lands on the tip of the bubble's tail, not the bubble body", () => {
   // The SVG path's tail tip is the "M4 3.5 L4 15 L8.2 15 L11 19 L11 15 ..." vertex at (11, 19) -
   // the same "this corner is where the click lands" convention comment-cursor patterns elsewhere
   // (Figma, Notion) use. The cursor's own hotspot offset (the two numbers before ", crosshair")

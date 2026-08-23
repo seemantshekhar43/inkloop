@@ -4,6 +4,6 @@ dist/
 .DS_Store
 .claude/
 
-# Local-only scratch space for ad hoc testing/comparison artifacts (e.g. issue #97's
-# inkloop-vs-lavish-axi trackpot comparison) - kept out of the repo on purpose, never committed.
+# Local-only scratch space for ad hoc testing/comparison artifacts - kept out of the repo on
+# purpose, never committed.
 local-testing/

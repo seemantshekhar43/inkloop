@@ -15,9 +15,9 @@ const SDK_SCRIPT_TAG = '<script src="/sdk.js"></script>';
  *
  * Uses the *last* </body> match, not the first: an artifact can legitimately contain the literal
  * substring "</body>" before its real closing tag (a comment or code sample documenting HTML, for
- * instance — see docs/examples/mermaid-artifact.html's own header comment). A first-match replace
- * would splice the script tag into that earlier occurrence instead, where — inside an HTML
- * comment, say — it never executes and the SDK silently fails to load.
+ * instance). A first-match replace would splice the script tag into that earlier occurrence
+ * instead, where — inside an HTML comment, say — it never executes and the SDK silently fails to
+ * load.
  */
 export function injectSdkScript(html: string): string {
   const matches = [...html.matchAll(CLOSING_BODY_TAG)];
