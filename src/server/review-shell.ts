@@ -8,7 +8,7 @@
  * trades a fixed slice of horizontal space (usually more abundant on a reviewer's monitor) for
  * giving the artifact the full viewport height back. The AGENTS.md "visual novelty" non-negotiable
  * that ruled out a sidebar the first time around is still respected on its own terms, not
- * abandoned: this isn't lavish-axi's chat-bubble "Conversation" sidebar reskinned, it's the same
+ * abandoned: this isn't a generic chat-bubble "Conversation" sidebar reskinned, it's the same
  * round-grouped transcript shape and pill-tag treatment from the bottom-dock version, just
  * reflowed into a vertical column instead of a horizontal strip. Below ~900px width — where the
  * horizontal space a side panel needs is the scarcer resource, not the vertical space it was

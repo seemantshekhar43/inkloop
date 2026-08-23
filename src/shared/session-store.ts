@@ -156,10 +156,9 @@ async function writeSessionRecordAtomic(
 }
 
 /**
- * Opens a new session or resumes an existing one, matching lavish-axi's reopen semantics
- * documented in docs/plan.md: a session the user ended from the browser refuses to reopen
- * unless the caller explicitly passes reopen: true. Agent-ended and never-opened sessions
- * always resume/open freely.
+ * Opens a new session or resumes an existing one. Reopen semantics: a session the user ended
+ * from the browser refuses to reopen unless the caller explicitly passes reopen: true.
+ * Agent-ended and never-opened sessions always resume/open freely.
  */
 export async function openOrResumeSession(
   absolutePath: string,

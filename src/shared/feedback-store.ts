@@ -116,8 +116,8 @@ export async function readPendingFeedback(
  *
  * There is no cross-process locking here: appendFeedback (browser POST) and claimPendingFeedback
  * (agent poll) are both plain read-modify-write cycles. That's an accepted tradeoff for a
- * single-user local server with low write concurrency (see docs/plan.md §5) rather than a gap to
- * close with a dependency like a file lock or SQLite.
+ * single-user local server with low write concurrency rather than a gap to close with a
+ * dependency like a file lock or SQLite.
  */
 export async function claimPendingFeedback(
   hash: string,
@@ -150,8 +150,8 @@ export async function claimPendingFeedback(
  *
  * There is no cross-process locking here: appendFeedback (browser POST) and takePendingFeedback
  * are both plain read-modify-write cycles. That's an accepted tradeoff for a single-user local
- * server with low write concurrency (see docs/plan.md §5) rather than a gap to close with a
- * dependency like a file lock or SQLite.
+ * server with low write concurrency rather than a gap to close with a dependency like a file
+ * lock or SQLite.
  */
 export async function takePendingFeedback(
   hash: string,

@@ -1,12 +1,11 @@
 /**
  * Static content-guidance data for `inkloop stencil` (issue #86, follow-up to #68's scoping
  * thread). Distinct from the review-loop mechanics (open/poll/end/stop): this is authoring-time
- * guidance for building the kind of artifact inkloop reviews well, served as plain data so the
- * CLI and `docs/` can both render from one source of truth rather than duplicating prose.
+ * guidance for building the kind of artifact inkloop reviews well, served as plain data so any
+ * caller (the CLI today) can render from one source of truth rather than duplicating prose.
  *
- * Naming: "stencil" (not lavish-axi's "playbook") and its five sections (`fit`/`layout`/`rules`/
- * `snags`/`loop_notes`, not lavish-axi's `choose`/`structure`/`design_rules`/`pitfalls`/
- * `lavish_notes`) - inkloop's own vocabulary for an inkloop-specific concern, per #68/#86.
+ * Naming: "stencil" and its five sections (`fit`/`layout`/`rules`/`snags`/`loop_notes`) -
+ * inkloop's own vocabulary for an inkloop-specific concern, per #68/#86.
  */
 
 export type StencilId =
@@ -22,8 +21,8 @@ export type StencilId =
  *
  * Extended by issue #90 (follow-up to #89): re-simulating the same 10 artifacts post-#89 confirmed
  * the zero-CSS failure was gone, but scored consistently lower on UI quality (7.54/10 avg) than an
- * equivalent artifact built from lavish-axi's static design guidance (8.21/10 avg) across 9 of 10
- * briefs - the recurring, evidenced gaps were: no component-library fallback ever named as an option,
+ * equivalent artifact built from a comparable tool's static design guidance (8.21/10 avg) across 9
+ * of 10 briefs - the recurring, evidenced gaps were: no component-library fallback ever named as an option,
  * no concrete example per component (prose rules only), no responsive-breakpoint starting pattern, no
  * dark-mode/theme-variant prompt, no stencil-specific component patterns (a plan's step/timeline, a
  * dashboard's stat/KPI tile, a status-color-to-semantic worked example), and the table stencil's own
@@ -70,7 +69,7 @@ export const DESIGN_BASELINE: DesignBaseline = {
   priority: [
     "If the user asked for a specific look or named design system, use that - including a project's own docs/design.md, DESIGN.md, style guide, or similar written design guideline, if one exists; check for it before assuming none was given.",
     "Otherwise, if the artifact represents an existing app or product, match that subject's own design system - its CSS variables/theme config, component library, brand assets, or existing styled pages - even when the artifact is authored from a different repo.",
-    'Otherwise - no design.md/guideline was found and the subject has no design system of its own to match - a CDN-loaded component library is an available option, the same way an artifact can already bring its own Mermaid CDN script (see AGENTS.md). Default (issue #103, follow-up to #97): Tailwind CSS\'s browser runtime plus DaisyUI\'s component classes, pinned versions, dropped straight into `<head>` with no build step - `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css"><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>` - the same pinned versions already verified working in this repo\'s own `docs/plan.html`. This is a starting point, not a fixed theme: pick one of DaisyUI\'s named `data-theme` values (e.g. `corporate`, `dracula`, `nord`) or override its CSS custom properties to actually fit the artifact\'s subject - a mismatched theme (e.g. a luxury/finance look on a fitness-tracker dashboard) reads worse than the plain baseline below, and was the one case in #90 where inkloop\'s hand-authored baseline beat this same kind of default outright. Re-pinning these two version numbers as Tailwind/DaisyUI ship new majors is this baseline\'s own maintenance, not inkloop\'s dependency tree - it never touches `package.json`.',
+    'Otherwise - no design.md/guideline was found and the subject has no design system of its own to match - a CDN-loaded component library is an available option, the same way an artifact can already bring its own Mermaid CDN script (see AGENTS.md). Default (issue #103, follow-up to #97): Tailwind CSS\'s browser runtime plus DaisyUI\'s component classes, pinned versions, dropped straight into `<head>` with no build step - `<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css"><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css"><script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>` - the same pinned versions already verified working end to end in this repo. This is a starting point, not a fixed theme: pick one of DaisyUI\'s named `data-theme` values (e.g. `corporate`, `dracula`, `nord`) or override its CSS custom properties to actually fit the artifact\'s subject - a mismatched theme (e.g. a luxury/finance look on a fitness-tracker dashboard) reads worse than the plain baseline below, and was the one case in #90 where inkloop\'s hand-authored baseline beat this same kind of default outright. Re-pinning these two version numbers as Tailwind/DaisyUI ship new majors is this baseline\'s own maintenance, not inkloop\'s dependency tree - it never touches `package.json`.',
     "Only when all of the above come up empty, fall back to the baseline in this reference.",
     'When delivering the artifact, state which of the above tiers was used and why (issue #102, follow-up to #97) - e.g. "used tier 2: matched the subject app\'s existing Tailwind config" or "used tier 4: baseline, no user spec or existing design system found" - a cheap checkpoint against silently skipping straight to the baseline instead of actually checking the earlier tiers first. This disclosure belongs in the agent\'s delivery message/reply to the reviewer (e.g. via `--agent-reply` or the initial handoff) - not as visible content baked into the artifact page itself, where it persists as a permanent callout an end-viewer has no use for (issue #120). The one exception is a stencil whose audience is itself internal/engineering-facing (e.g. a `comparison` or `report` doc reviewed by the team that cares about tooling choices) - there, keeping it on the page can be the right call.',
   ],
@@ -243,7 +242,7 @@ const STENCILS: readonly Stencil[] = [
     title: "Diagram",
     fit: "System structure, flow, or relationships better shown visually than described - architecture, sequence, state machine. Not the right choice for a UI review (use mockup) or tabular data (use table).",
     layout:
-      "Follow the existing Mermaid pattern already documented for this repo - see AGENTS.md's \"Rendering diagrams in an artifact\" section and `docs/examples/mermaid-artifact.html` for a verified working example. This stencil doesn't repeat that guidance, it just points at it.",
+      "Follow the existing Mermaid pattern already documented for this repo - see AGENTS.md's \"Rendering diagrams in an artifact\" section for a verified working example. This stencil doesn't repeat that guidance, it just points at it.",
     rules: [
       "Pick the Mermaid diagram type that matches the content (flowchart/sequence/state/etc.) rather than forcing everything into a flowchart.",
       "Label edges and nodes with what a reader actually needs, not internal variable/function names unless the audience is exactly that codebase's authors.",
@@ -281,7 +280,7 @@ const STENCILS: readonly Stencil[] = [
   {
     id: "loopable",
     title: "Loopable",
-    fit: "Applies to every artifact reviewed through inkloop, regardless of which of the other seven content types it is - the one cross-cutting stencil with no lavish-axi equivalent, since it's specific to inkloop's review-loop mechanics rather than content type.",
+    fit: "Applies to every artifact reviewed through inkloop, regardless of which of the other seven content types it is - the one cross-cutting stencil with no content-type equivalent, since it's specific to inkloop's review-loop mechanics rather than content type.",
     layout:
       "No layout guidance of its own - see whichever content-type stencil applies. This stencil only covers the loop-safety properties every artifact needs on top of that.",
     rules: [
