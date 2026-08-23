@@ -66,8 +66,8 @@
     notifyQueueChanged();
   }
 
-  /** Removes a queued-but-unsent item by id, requested by the review shell's pill "×" control
-   *. No-ops silently if the id is already gone (e.g. a stale click after Send). */
+  /** Removes a queued-but-unsent item by id, requested by the review shell's pill "×" control.
+   * No-ops silently if the id is already gone (e.g. a stale click after Send). */
   function removeQueueItem(id: string): void {
     const index = queue.findIndex((item) => item.id === id);
     if (index === -1) return;
@@ -261,8 +261,8 @@
    * Toggles picking mode and its visible side effects: a custom reticle cursor on the artifact so
    * it's obvious a click will select rather than click through, and a postMessage telling the
    * review shell the real current state. The shell used to guess this optimistically from its
-   * own toggle button clicks alone, which drifted out of sync as soon as a pick completed
-   *. Picking mode itself now stays on across multiple picks — this only
+   * own toggle button clicks alone, which drifted out of sync as soon as a pick completed.
+   * Picking mode itself now stays on across multiple picks - this only
    * flips off on an explicit re-toggle or one of the other call sites that already turn it off
    * today (markEnded, live reload).
    */

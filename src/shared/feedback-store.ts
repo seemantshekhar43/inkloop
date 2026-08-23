@@ -109,8 +109,8 @@ export async function readPendingFeedback(
  * session: marks each with a `claimedAt` timestamp and persists that back to feedback.json, then
  * returns just the batch that was newly claimed. Claiming is deliberately *not* the same as
  * delivering — see commitDeliveredFeedback — so the poll route can send the claimed batch to the
- * client and only mark it permanently `deliveredAt` once that response is confirmed flushed
- *. Until then, the claim keeps the batch hidden from other pollers for
+ * client and only mark it permanently `deliveredAt` once that response is confirmed flushed.
+ * Until then, the claim keeps the batch hidden from other pollers for
  * claimVisibilityMs; if the response is lost in transit and delivery is never confirmed, the
  * claim ages out and a later poll reclaims and resends the same items instead of them being lost.
  *
