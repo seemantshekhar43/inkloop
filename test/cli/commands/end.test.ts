@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { decode } from "@toon-format/toon";
 import { runEndCommand } from "../../../src/cli/commands/end.js";
 import { endSession, openOrResumeSession, readSessionRecord } from "../../../src/shared/session-store.js";
 
@@ -61,7 +62,7 @@ void test("ends an opened session with status agent-ended and prints next_step g
 
     const { code, text } = await captureWrite(process.stdout, () => runEndCommand(artifactPath));
     assert.equal(code, 0);
-    const body = JSON.parse(text) as { status: string; endedBy: string; next_step: string };
+    const body = decode(text) as { status: string; endedBy: string; next_step: string };
     assert.equal(body.status, "ended");
     assert.equal(body.endedBy, "agent");
     assert.match(body.next_step, /may reopen it freely/);
@@ -82,7 +83,7 @@ void test("ending an already user-ended session reports endedBy: \"user\", not \
 
     const { code, text } = await captureWrite(process.stdout, () => runEndCommand(artifactPath));
     assert.equal(code, 0);
-    const body = JSON.parse(text) as { status: string; endedBy: string; next_step: string };
+    const body = decode(text) as { status: string; endedBy: string; next_step: string };
     assert.equal(body.status, "ended");
     assert.equal(body.endedBy, "user");
     assert.match(body.next_step, /will refuse to reopen it unless run with --reopen/);
