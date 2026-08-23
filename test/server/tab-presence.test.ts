@@ -38,7 +38,7 @@ void test("different sessions (hashes) never see each other's tabs", () => {
   assert.equal(tracker.record("hash-2", "tab-b", now), false);
 });
 
-void test("issue #65: release() drops a tab immediately, before it would otherwise go stale", () => {
+void test("release() drops a tab immediately, before it would otherwise go stale", () => {
   const tracker = createTabPresenceTracker(10_000);
   let now = 0;
   assert.equal(tracker.record("hash-1", "tab-a", now), false);

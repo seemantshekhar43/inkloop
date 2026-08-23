@@ -36,27 +36,27 @@ void test("wires up the postMessage bridge to the SDK's message vocabulary", () 
   assert.match(html, /event\.origin !== window\.location\.origin/);
 });
 
-void test("renders a remove control per pill, delegated from the thread container (issue #18)", () => {
+void test("renders a remove control per pill, delegated from the thread container", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, /class="pill-remove"/);
   assert.match(html, /thread\.addEventListener\('click'/);
 });
 
-void test("Send enters a distinct in-flight state and resets on sent/error (issue #18)", () => {
+void test("Send enters a distinct in-flight state and resets on sent/error", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, /classList\.add\('sending'\)/);
   assert.match(html, /Sending…/);
   assert.match(html, /function resetSendButton/);
 });
 
-void test("shows a picking-mode hint that toggles with the element picker (issue #18)", () => {
+void test("shows a picking-mode hint that toggles with the element picker", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, /id="picking-hint"/);
   assert.match(html, /pickingHint\.classList\.add\('visible'\)/);
   assert.match(html, /pickingHint\.classList\.remove\('visible'\)/);
 });
 
-void test("issue #61: the picking-mode hint auto-hides after a few seconds instead of staying up the whole time", () => {
+void test("the picking-mode hint auto-hides after a few seconds instead of staying up the whole time", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, /var PICKING_HINT_VISIBLE_MS = 4000;/);
   assert.match(html, /var PICKING_HINT_FADE_MS = 300;/);
@@ -69,7 +69,7 @@ void test("issue #61: the picking-mode hint auto-hides after a few seconds inste
   assert.match(html, /pickingHint\.classList\.add\('fading'\)/);
 });
 
-void test("picking state is driven by the SDK's own inkloop:picking message, not guessed locally (issue #18)", () => {
+void test("picking state is driven by the SDK's own inkloop:picking message, not guessed locally", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, /data\.type === 'inkloop:picking'/);
   assert.match(html, /setPicking\(Boolean\(data\.active\)\)/);
@@ -84,7 +84,7 @@ void test("escapes untrusted queue content before interpolating it into pill mar
   assert.match(html, /escapeHtml\(String\(item\.target\.quote\)/);
 });
 
-void test("issue #38: the round/comment label reflects the live queue, not just sent history", () => {
+void test("the round/comment label reflects the live queue, not just sent history", () => {
   const html = renderReviewShell(HASH);
   // updateHistoryLabel must exist and be the sole writer of historyLabel's text, combining the
   // last-fetched sent-round counts with however many items are currently queued but unsent — the
@@ -100,7 +100,7 @@ void test("issue #38: the round/comment label reflects the live queue, not just 
   assert.match(renderFnMatch[0], /updateHistoryLabel\(\);/);
 });
 
-void test("live reload (issue #8): long-polls /reload, reloads the iframe on a version bump, and restores draft state on inkloop:ready", () => {
+void test("live reload: long-polls /reload, reloads the iframe on a version bump, and restores draft state on inkloop:ready", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, new RegExp(`SESSION_HASH = ${JSON.stringify(HASH)}`));
   assert.match(html, /\/session\/' \+ SESSION_HASH \+ '\/reload\?since=/);
@@ -113,7 +113,7 @@ void test("live reload (issue #8): long-polls /reload, reloads the iframe on a v
   assert.match(html, /data\.type === 'inkloop:scroll'/);
 });
 
-void test("issue #117: inkloop:ready also resyncs the freshly-reloaded SDK's picking state, via an explicit set rather than a toggle", () => {
+void test("inkloop:ready also resyncs the freshly-reloaded SDK's picking state, via an explicit set rather than a toggle", () => {
   const html = renderReviewShell(HASH);
   const readyHandlerMatch = html.match(
     /data\.type === 'inkloop:ready'\) \{[\s\S]*?\n {4}\}/,
@@ -129,7 +129,7 @@ void test("issue #117: inkloop:ready also resyncs the freshly-reloaded SDK's pic
   assert.doesNotMatch(readyHandler, /inkloop:toggle-element-picker/);
 });
 
-void test("session lifecycle (issue #9): renders an End session control, confirms before ending, and disables interactions once ended", () => {
+void test("session lifecycle: renders an End session control, confirms before ending, and disables interactions once ended", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, /<button type="button" class="end-session" id="end-btn">End session<\/button>/);
   assert.match(html, /id="ended-banner"/);
@@ -144,7 +144,7 @@ void test("session lifecycle (issue #9): renders an End session control, confirm
   assert.match(html, /if \(!reloadPollingActive\) return;/);
 });
 
-void test("issue #59: End-session confirmation uses a themed in-app modal, not window.confirm()", () => {
+void test("End-session confirmation uses a themed in-app modal, not window.confirm()", () => {
   const html = renderReviewShell(HASH);
   // Matches an actual invocation, e.g. window.confirm('...'), not this test's or the source's own
   // prose mentioning "window.confirm()" while explaining what it replaced.
@@ -161,13 +161,13 @@ void test("issue #59: End-session confirmation uses a themed in-app modal, not w
   );
 });
 
-void test("issue #60: typing in the composer alone (nothing queued) enables Send", () => {
+void test("typing in the composer alone (nothing queued) enables Send", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, /composer\.value\.trim\(\)\.length === 0/);
   assert.match(html, /composer\.addEventListener\('input', updateSendButtonEnabled\)/);
 });
 
-void test("issue #60: Send folds the composer's current text into the same batch instead of dropping it", () => {
+void test("Send folds the composer's current text into the same batch instead of dropping it", () => {
   const html = renderReviewShell(HASH);
   const sendHandlerStart = html.indexOf("sendBtn.addEventListener('click'");
   assert.ok(sendHandlerStart >= 0);
@@ -181,12 +181,12 @@ void test("issue #60: Send folds the composer's current text into the same batch
   );
 });
 
-void test("issue #60: Enter-to-queue is dropped entirely, not just re-labeled", () => {
+void test("Enter-to-queue is dropped entirely, not just re-labeled", () => {
   const html = renderReviewShell(HASH);
   assert.doesNotMatch(html, /submitNote/);
 });
 
-void test("issue #70: Enter in the composer sends (Shift+Enter still inserts a newline)", () => {
+void test("Enter in the composer sends (Shift+Enter still inserts a newline)", () => {
   const html = renderReviewShell(HASH);
   const keydownHandlerStart = html.indexOf("composer.addEventListener('keydown'");
   assert.ok(keydownHandlerStart >= 0);
@@ -201,18 +201,18 @@ void test("issue #70: Enter in the composer sends (Shift+Enter still inserts a n
   assert.match(keydownHandlerBody, /sendBtn\.click\(\);/);
 });
 
-void test("issue #55: the picking-mode label reads as a clear call-to-action, not 'Cancel Sidenote'", () => {
+void test("the picking-mode label reads as a clear call-to-action, not 'Cancel Sidenote'", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, /pickLabel\.textContent = picking \? 'Stop Sidenote' : 'Sidenote';/);
   assert.doesNotMatch(html, /Cancel Sidenote/);
 });
 
-void test("issue #57: the free-text composer's placeholder names the agent as the recipient", () => {
+void test("the free-text composer's placeholder names the agent as the recipient", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, /placeholder="Write a note to agent…"/);
 });
 
-void test("issue #58: the session-ended banner reads as a copyable command", () => {
+void test("the session-ended banner reads as a copyable command", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, /Session ended\. Run <code>inkloop &lt;file&gt; --reopen<\/code> to resume review\./);
 });
@@ -230,7 +230,7 @@ void test("uses the same mono font stack as axi.md's design system, with no webf
   assert.doesNotMatch(html, /fonts\.googleapis\.com|fonts\.gstatic\.com/);
 });
 
-void test("issue #63: Send optimistically clears the thread and paints a pending round before the network call", () => {
+void test("Send optimistically clears the thread and paints a pending round before the network call", () => {
   const html = renderReviewShell(HASH);
   const sendHandlerStart = html.indexOf("sendBtn.addEventListener('click'");
   assert.ok(sendHandlerStart >= 0);
@@ -247,7 +247,7 @@ void test("issue #63: Send optimistically clears the thread and paints a pending
   assert.ok(clearIndex >= 0 && sendPostIndex >= 0 && clearIndex < sendPostIndex);
 });
 
-void test("issue #63: inkloop:send-error rolls back the optimistic clear and re-renders lastHistory", () => {
+void test("inkloop:send-error rolls back the optimistic clear and re-renders lastHistory", () => {
   const html = renderReviewShell(HASH);
   const errorHandlerStart = html.indexOf("data.type === 'inkloop:send-error'");
   assert.ok(errorHandlerStart >= 0);
@@ -261,7 +261,7 @@ void test("issue #63: inkloop:send-error rolls back the optimistic clear and re-
   assert.match(errorHandlerBody, /renderHistory\(lastHistory\);/);
 });
 
-void test("issue #63: the SDK's own queue echo during a send in flight doesn't stomp the optimistic clear", () => {
+void test("the SDK's own queue echo during a send in flight doesn't stomp the optimistic clear", () => {
   const html = renderReviewShell(HASH);
   const queueHandlerStart = html.indexOf("data.type === 'inkloop:queue'");
   assert.ok(queueHandlerStart >= 0);
@@ -282,7 +282,7 @@ void test("different hashes render distinct, non-colliding shells", () => {
   assert.match(htmlB, new RegExp(other));
 });
 
-void test("issue #42 follow-up: prefers-reduced-motion collapses the entrance/press animations and transitions", () => {
+void test("prefers-reduced-motion collapses the entrance/press animations and transitions", () => {
   const html = renderReviewShell(HASH);
   const mediaStart = html.indexOf("@media (prefers-reduced-motion: reduce)");
   assert.ok(mediaStart >= 0, "expected a prefers-reduced-motion media query guarding the new animations");
@@ -296,18 +296,18 @@ void test("issue #42 follow-up: prefers-reduced-motion collapses the entrance/pr
   assert.match(mediaBody, /scroll-behavior:\s*auto\s*!important/);
 });
 
-void test("issue #42 follow-up: dark-only color-scheme is declared on :root and matched by a theme-color meta", () => {
+void test("dark-only color-scheme is declared on :root and matched by a theme-color meta", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, /<meta name="theme-color" content="#0b0b0f">/);
   assert.match(html, /:root\s*{[^}]*color-scheme:\s*dark;/s);
 });
 
-void test("issue #42 follow-up: the composer textarea has an aria-label since its placeholder alone isn't a reliable accessible name", () => {
+void test("the composer textarea has an aria-label since its placeholder alone isn't a reliable accessible name", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, /<textarea id="composer"[^>]*aria-label="Note to agent"[^>]*>/);
 });
 
-void test("issue #42 follow-up: transient banners and the send status line announce via role=status/aria-live=polite", () => {
+void test("transient banners and the send status line announce via role=status/aria-live=polite", () => {
   const html = renderReviewShell(HASH);
   for (const id of ["picking-hint", "ended-banner", "tab-banner", "status"]) {
     const re = new RegExp(`id="${id}"[^>]*role="status"[^>]*aria-live="polite"`);
@@ -315,7 +315,7 @@ void test("issue #42 follow-up: transient banners and the send status line annou
   }
 });
 
-void test("issue #42 follow-up: the history panel contains overscroll so scrolling past either end doesn't chain into the page/iframe behind it", () => {
+void test("the history panel contains overscroll so scrolling past either end doesn't chain into the page/iframe behind it", () => {
   const html = renderReviewShell(HASH);
   const panelStart = html.indexOf(".history-panel {");
   assert.ok(panelStart >= 0, "expected a .history-panel rule");
@@ -324,12 +324,12 @@ void test("issue #42 follow-up: the history panel contains overscroll so scrolli
   assert.match(panelBody, /overscroll-behavior:\s*contain;/);
 });
 
-void test("issue #43 follow-up: buttons get real touch targets - no tap delay, no default grey tap-highlight flash", () => {
+void test("buttons get real touch targets - no tap delay, no default grey tap-highlight flash", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, /button\s*{[^}]*touch-action:\s*manipulation;[^}]*-webkit-tap-highlight-color:\s*transparent;/);
 });
 
-void test("issue #73: renders a suggestions container above the composer", () => {
+void test("renders a suggestions container above the composer", () => {
   const html = renderReviewShell(HASH);
   const suggestionsIndex = html.indexOf('id="suggestions"');
   const composerRowIndex = html.indexOf('class="composer-row"');
@@ -340,7 +340,7 @@ void test("issue #73: renders a suggestions container above the composer", () =>
   );
 });
 
-void test("issue #73: the SDK's suggestions message is stored and rendered, not auto-shown once history exists", () => {
+void test("the SDK's suggestions message is stored and rendered, not auto-shown once history exists", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, /data\.type === 'inkloop:suggestions'/);
   assert.match(html, /suggestions = Array\.isArray\(data\.prompts\) \? data\.prompts : \[\];/);
@@ -358,7 +358,7 @@ void test("issue #73: the SDK's suggestions message is stored and rendered, not 
   assert.match(html.slice(renderHistoryStart, renderHistoryEnd), /renderSuggestions\(\);/);
 });
 
-void test("issue #73: clicking a suggestion populates the composer instead of auto-sending", () => {
+void test("clicking a suggestion populates the composer instead of auto-sending", () => {
   const html = renderReviewShell(HASH);
   const listenerStart = html.indexOf("suggestionsEl.addEventListener('click'");
   assert.ok(listenerStart >= 0, "expected a click listener on the suggestions container");
@@ -368,7 +368,7 @@ void test("issue #73: clicking a suggestion populates the composer instead of au
   assert.doesNotMatch(listenerBody, /postToFrame\(\{ type: 'inkloop:send' \}\)/);
 });
 
-void test("issue #73: a suggestion chip can be individually dismissed", () => {
+void test("a suggestion chip can be individually dismissed", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, /class="suggestion-chip-remove"/);
   const listenerStart = html.indexOf("suggestionsEl.addEventListener('click'");
@@ -377,7 +377,7 @@ void test("issue #73: a suggestion chip can be individually dismissed", () => {
   assert.match(listenerBody, /suggestions\.splice\(removeIndex, 1\);/);
 });
 
-void test("issue #73: sending clears every suggestion immediately, not just once history refreshes", () => {
+void test("sending clears every suggestion immediately, not just once history refreshes", () => {
   const html = renderReviewShell(HASH);
   const sendHandlerStart = html.indexOf("sendBtn.addEventListener('click'");
   const sendCallText = "postToFrame({ type: 'inkloop:send' });";
@@ -394,7 +394,7 @@ void test("issue #73: sending clears every suggestion immediately, not just once
   );
 });
 
-void test("issue #76: a round-history entry carries a status derived from deliveredAt/reply, not just its own existence", () => {
+void test("a round-history entry carries a status derived from deliveredAt/reply, not just its own existence", () => {
   const html = renderReviewShell(HASH);
   const statusFnMatch = html.match(/function roundStatus\(round\) \{[\s\S]*?\n {2}\}/);
   assert.ok(statusFnMatch, "expected to find roundStatus()");
@@ -409,7 +409,7 @@ void test("issue #76: a round-history entry carries a status derived from delive
   assert.match(body, /return \{ key: 'queued', label: 'Queued' \};/);
 });
 
-void test("issue #76: the round label renders a status pill wired to roundHtml's pending/roundStatus branches", () => {
+void test("the round label renders a status pill wired to roundHtml's pending/roundStatus branches", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, /class="history-round-status status-' \+ status\.key \+ '"/);
   const roundHtmlMatch = html.match(/function roundHtml\(round, pending\) \{[\s\S]*?\n {2}\}/);
@@ -420,7 +420,7 @@ void test("issue #76: the round label renders a status pill wired to roundHtml's
   );
 });
 
-void test("issue #76: the working-status verb bank is single-word and rotates deterministically by round number", () => {
+void test("the working-status verb bank is single-word and rotates deterministically by round number", () => {
   const html = renderReviewShell(HASH);
   const verbsMatch = html.match(/var WORKING_VERBS = \[([\s\S]*?)\];/);
   assert.ok(verbsMatch, "expected to find WORKING_VERBS");
@@ -434,7 +434,7 @@ void test("issue #76: the working-status verb bank is single-word and rotates de
   assert.match(html, /WORKING_VERBS\[round\.round % WORKING_VERBS\.length\]/);
 });
 
-void test("issue #78: renderHistory follows new content to the bottom only when the reviewer was already near it, otherwise restores their exact scroll position", () => {
+void test("renderHistory follows new content to the bottom only when the reviewer was already near it, otherwise restores their exact scroll position", () => {
   const html = renderReviewShell(HASH);
   const renderHistoryMatch = html.match(/function renderHistory\(history\) \{[\s\S]*?\n {2}\}/);
   assert.ok(renderHistoryMatch, "expected to find renderHistory()");
@@ -453,14 +453,14 @@ void test("issue #78: renderHistory follows new content to the bottom only when 
   assert.match(body, /historyPanel\.scrollTop = wasNearBottom \? historyPanel\.scrollHeight : prevScrollTop;/);
 });
 
-void test("issue #78: the optimistic pending round always scrolls into view (the reviewer just clicked Send)", () => {
+void test("the optimistic pending round always scrolls into view (the reviewer just clicked Send)", () => {
   const html = renderReviewShell(HASH);
   const renderPendingMatch = html.match(/function renderPendingRound\(itemsForRound\) \{[\s\S]*?\n {2}\}/);
   assert.ok(renderPendingMatch, "expected to find renderPendingRound()");
   assert.match(renderPendingMatch[0], /scrollHistoryPanelToBottom\(\);/);
 });
 
-void test("issue #78: near-bottom detection uses the panel's own scroll metrics with slack, not an exact-zero check", () => {
+void test("near-bottom detection uses the panel's own scroll metrics with slack, not an exact-zero check", () => {
   const html = renderReviewShell(HASH);
   assert.match(
     html,
@@ -468,7 +468,7 @@ void test("issue #78: near-bottom detection uses the panel's own scroll metrics 
   );
 });
 
-void test("issue #76 follow-up: the status pill is hidden once a round has a reply - the 'Agent' block already says it's done", () => {
+void test("the status pill is hidden once a round has a reply - the 'Agent' block already says it's done", () => {
   const html = renderReviewShell(HASH);
   const roundHtmlMatch = html.match(/function roundHtml\(round, pending\) \{[\s\S]*?\n {2}\}/);
   assert.ok(roundHtmlMatch, "expected to find roundHtml()");
@@ -478,7 +478,7 @@ void test("issue #76 follow-up: the status pill is hidden once a round has a rep
   );
 });
 
-void test("issue #76 follow-up: the empty-queue onboarding hint only shows before the session has ever had history", () => {
+void test("the empty-queue onboarding hint only shows before the session has ever had history", () => {
   const html = renderReviewShell(HASH);
   const renderFnMatch = html.match(/function render\(\) \{[\s\S]*?\n {4}\} else \{/);
   assert.ok(renderFnMatch, "expected to find render()'s empty-queue branch");
@@ -492,14 +492,14 @@ void test("the composer textarea defaults to roughly 4 visible lines, not 1-2", 
   assert.match(html, /min-height: 74px; max-height: 220px; line-height: 1\.4;/);
 });
 
-void test("issue #76 follow-up: renderHistory re-runs render() so the onboarding hint clears once a send resolves, not just on the next queue change", () => {
+void test("renderHistory re-runs render() so the onboarding hint clears once a send resolves, not just on the next queue change", () => {
   const html = renderReviewShell(HASH);
   const renderHistoryMatch = html.match(/function renderHistory\(history\) \{[\s\S]*?\n {2}\}/);
   assert.ok(renderHistoryMatch, "expected to find renderHistory()");
   assert.match(renderHistoryMatch[0], /render\(\);\s*\n {2}\}/);
 });
 
-void test("issue #76 follow-up: no separate 'Sent.' status line on a successful send - the round-status badge already says so", () => {
+void test("no separate 'Sent.' status line on a successful send - the round-status badge already says so", () => {
   const html = renderReviewShell(HASH);
   const sentHandlerMatch = html.match(/data\.type === 'inkloop:sent'\) \{[\s\S]*?\} else if \(data\.type === 'inkloop:send-error'\)/);
   assert.ok(sentHandlerMatch, "expected to find the inkloop:sent handler");
@@ -507,7 +507,7 @@ void test("issue #76 follow-up: no separate 'Sent.' status line on a successful 
   assert.match(sentHandlerMatch[0], /fetchHistory\(\);/);
 });
 
-void test("issue #79: renders an in-panel collapse button and a viewport-edge expand handle for the side dock", () => {
+void test("renders an in-panel collapse button and a viewport-edge expand handle for the side dock", () => {
   const html = renderReviewShell(HASH);
   // Edge handle: outside <aside id="dock">, so display:none on the aside can't hide it too.
   const dockHandleIndex = html.indexOf('id="dock-handle"');
@@ -526,7 +526,7 @@ void test("issue #79: renders an in-panel collapse button and a viewport-edge ex
   assert.match(html, /id="dock-collapse-btn" aria-expanded="true" aria-controls="dock"/);
 });
 
-void test("issue #79: collapsing the dock hides the whole panel via body.dock-collapsed, freeing its 340px to the iframe", () => {
+void test("collapsing the dock hides the whole panel via body.dock-collapsed, freeing its 340px to the iframe", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, /body\.dock-collapsed aside#dock \{ display: none; \}/);
   // The edge handle only appears once collapsed; it's positioned off the .content wrapper (not
@@ -534,7 +534,7 @@ void test("issue #79: collapsing the dock hides the whole panel via body.dock-co
   assert.match(html, /body\.dock-collapsed \.dock-handle \{ display: flex; \}/);
 });
 
-void test("issue #79: dock collapsed state persists per session via sessionStorage, keyed by session hash", () => {
+void test("dock collapsed state persists per session via sessionStorage, keyed by session hash", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, /var DOCK_COLLAPSED_KEY = 'inkloop-dock-collapsed:' \+ SESSION_HASH;/);
   assert.match(html, /function setDockCollapsed\(collapsed\)/);
@@ -547,7 +547,7 @@ void test("issue #79: dock collapsed state persists per session via sessionStora
   assert.match(iife[0], /setDockCollapsed\(initiallyCollapsed\);/);
 });
 
-void test("issue #79: the handle expands and the in-panel button collapses, each wired to its own click", () => {
+void test("the handle expands and the in-panel button collapses, each wired to its own click", () => {
   const html = renderReviewShell(HASH);
   assert.match(html, /dockHandle\.addEventListener\('click', function \(\) \{ setDockCollapsed\(false\); \}\);/);
   assert.match(html, /dockCollapseBtn\.addEventListener\('click', function \(\) \{ setDockCollapsed\(true\); \}\);/);

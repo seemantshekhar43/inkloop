@@ -50,7 +50,7 @@ void test("with a known id, expands its sections and exits 0", () => {
   assert.match(text, /Mermaid/);
 });
 
-void test("every stencil id's output includes design_baseline (issue #89)", () => {
+void test("every stencil id's output includes design_baseline", () => {
   for (const id of [
     "plan",
     "comparison",

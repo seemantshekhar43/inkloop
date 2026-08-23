@@ -6,8 +6,8 @@ import { defaultStateRoot } from "./session-store.js";
 
 /**
  * One round of the review conversation: the annotations sent together in a single "Send" click,
- * plus the agent's reply (if any) that responded to them. Feeds the round-history panel (issue
- * #21) — see review-shell.ts's history handle/panel for the client side.
+ * plus the agent's reply (if any) that responded to them. Feeds the round-history panel — see
+ * review-shell.ts's history handle/panel for the client side.
  */
 export interface HistoryRound {
   round: number;

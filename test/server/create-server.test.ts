@@ -255,7 +255,7 @@ void test("GET /sdk.js serves the compiled SDK bundle as JavaScript, no Host byp
     // Sanity check it's the real bundle, not a stub — it defines the IIFE and guards on being
     // hosted in an iframe.
     assert.match(body, /window === window\.parent/);
-    // Live reload (issue #8): scroll reporting and draft-state restoration made it into the
+    // Live reload: scroll reporting and draft-state restoration made it into the
     // compiled bundle, not just the TypeScript source.
     assert.match(body, /inkloop:scroll/);
     assert.match(body, /inkloop:restore-draft/);
@@ -674,7 +674,7 @@ void test("reload route: times out at the current version with no change, and pi
   }
 });
 
-void test("reload route: flags otherTabActive once a second tab's ?tab= id is seen, and stays unflagged for a single tab (issue #40)", async () => {
+void test("reload route: flags otherTabActive once a second tab's ?tab= id is seen, and stays unflagged for a single tab", async () => {
   const stateRoot = await mkdtemp(path.join(os.tmpdir(), "inkloop-tab-presence-test-"));
   const artifactDir = await mkdtemp(path.join(os.tmpdir(), "inkloop-tab-presence-artifact-"));
   const originalStateDir = process.env["INKLOOP_STATE_DIR"];
@@ -704,7 +704,7 @@ void test("reload route: flags otherTabActive once a second tab's ?tab= id is se
     });
     assert.equal((secondTabSees.body as { otherTabActive: boolean }).otherTabActive, true);
 
-    // A pre-#40 client with no ?tab= at all is unaffected either way — no crash, no false flag.
+    // A client with no ?tab= at all is unaffected either way — no crash, no false flag.
     const noTabParam = await request(port, `/session/${hash}/reload?since=0`, {
       host: "127.0.0.1",
     });
@@ -717,7 +717,7 @@ void test("reload route: flags otherTabActive once a second tab's ?tab= id is se
   }
 });
 
-void test("tab-leave route: releases a tab's presence immediately instead of waiting for it to go stale (issue #65)", async () => {
+void test("tab-leave route: releases a tab's presence immediately instead of waiting for it to go stale", async () => {
   const stateRoot = await mkdtemp(path.join(os.tmpdir(), "inkloop-tab-leave-test-"));
   const artifactDir = await mkdtemp(path.join(os.tmpdir(), "inkloop-tab-leave-artifact-"));
   const originalStateDir = process.env["INKLOOP_STATE_DIR"];

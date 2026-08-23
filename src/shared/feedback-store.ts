@@ -75,7 +75,7 @@ async function writeFeedbackAtomic(
 
 /**
  * How long a claimed-but-unconfirmed item stays hidden from readPendingFeedback/
- * claimPendingFeedback before it's treated as abandoned and becomes claimable again (issue #115).
+ * claimPendingFeedback before it's treated as abandoned and becomes claimable again.
  * A real poll response is flushed within milliseconds of being claimed, so this just needs to
  * comfortably outlast that — it's not a timeout callers wait out in the normal case, only a
  * backstop for the abnormal one (the polling process killed, the connection dropped, mid-flight).
@@ -110,7 +110,7 @@ export async function readPendingFeedback(
  * returns just the batch that was newly claimed. Claiming is deliberately *not* the same as
  * delivering — see commitDeliveredFeedback — so the poll route can send the claimed batch to the
  * client and only mark it permanently `deliveredAt` once that response is confirmed flushed
- * (issue #115). Until then, the claim keeps the batch hidden from other pollers for
+ *. Until then, the claim keeps the batch hidden from other pollers for
  * claimVisibilityMs; if the response is lost in transit and delivery is never confirmed, the
  * claim ages out and a later poll reclaims and resends the same items instead of them being lost.
  *
@@ -142,11 +142,11 @@ export async function claimPendingFeedback(
 /**
  * Atomically claims every currently-undelivered feedback item and marks it `deliveredAt` in one
  * step, with no intermediate claimed-but-unconfirmed state. Not used by the poll route (see
- * claimPendingFeedback + commitDeliveredFeedback for that — issue #115's fix needs the two steps
- * kept separate so delivery can be deferred until a response is confirmed flushed); kept as a
- * direct one-shot primitive for callers that don't need that flush-confirmation window. Delivered
- * items are kept on disk (not deleted) so a full session history survives for issue #21 — only
- * the poll cursor (deliveredAt) advances.
+ * claimPendingFeedback + commitDeliveredFeedback for that — those two steps stay separate so
+ * delivery can be deferred until a response is confirmed flushed); kept as a direct one-shot
+ * primitive for callers that don't need that flush-confirmation window. Delivered items are kept
+ * on disk (not deleted) so a full session history survives — only the poll cursor
+ * (deliveredAt) advances.
  *
  * There is no cross-process locking here: appendFeedback (browser POST) and takePendingFeedback
  * are both plain read-modify-write cycles. That's an accepted tradeoff for a single-user local
@@ -172,7 +172,7 @@ export async function takePendingFeedback(
 }
 
 /**
- * Marks specific feedback ids as permanently delivered, if they aren't already (issue #115).
+ * Marks specific feedback ids as permanently delivered, if they aren't already.
  * Pairs with claimPendingFeedback: the poll route claims a batch (hiding it behind claimedAt),
  * sends it, and only calls this — turning claimedAt into a permanent deliveredAt — once that
  * response is confirmed flushed. If the response is lost in transit instead (the polling process
@@ -201,13 +201,13 @@ export async function commitDeliveredFeedback(
 }
 
 /**
- * Flags the given feedback item ids as drifted (issue #10): the browser's SDK recomputed a
+ * Flags the given feedback item ids as drifted: the browser's SDK recomputed a
  * text-range target's content fingerprint against the live artifact and found it no longer
  * matches what was captured at queue time. Idempotent — an id that's already drifted, or that
  * doesn't match any item, is left untouched, so a client can safely re-report the same id across
  * multiple artifact reloads. Persists even for already-delivered items: an agent that's about to
  * revise based on a poll response it already received can't un-see it, but a human re-opening
- * the review shell should still see the flag in the round-history panel (issue #21).
+ * the review shell should still see the flag in the round-history panel.
  */
 export async function markFeedbackDrifted(
   hash: string,

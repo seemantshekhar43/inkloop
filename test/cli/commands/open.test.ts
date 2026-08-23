@@ -95,7 +95,7 @@ void test("opens a new session and prints a URL that serves the artifact", async
   });
 });
 
-void test("prints next-step guidance to stderr alongside the URL (issue #39)", async () => {
+void test("prints next-step guidance to stderr alongside the URL", async () => {
   await withTestEnvironment(async ({ artifactDir }) => {
     const artifactPath = path.join(artifactDir, "artifact.html");
     await writeFile(artifactPath, "<p>hello</p>", "utf8");

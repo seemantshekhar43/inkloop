@@ -13,7 +13,7 @@ const LOCAL_ASSET_ATTR_RE = /\b(?:src|href)\s*=\s*["']([^"'#][^"']*)["']/gi;
  * Extracts local sibling-asset paths the artifact HTML declares via `src=`/`href=` — anything
  * that isn't an absolute URL (has a scheme, or is protocol-relative) and resolves to a real file
  * inside the artifact's own directory tree. Used to watch not just the artifact file itself but
- * whatever it visibly depends on, per issue #8's "declared sibling assets" requirement.
+ * whatever it visibly depends on ("declared sibling assets").
  *
  * Computed once at watcher setup from the artifact's content at that moment — a known v1
  * limitation is that an asset reference *added* to the artifact later won't be picked up until

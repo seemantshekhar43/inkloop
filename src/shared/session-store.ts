@@ -7,7 +7,7 @@ export type SessionStatus = "opened" | "agent-ended" | "user-ended";
 
 /**
  * Human-readable guidance for what an agent should do next, given a session's terminal status.
- * Shared by the poll route's "ended" response (issue #7) and `inkloop end`'s own output (issue
+ * Shared by the poll route's "ended" response and `inkloop end`'s own output (issue
  * #9) so both surfaces describe the same reopen semantics in the same words. Returns undefined
  * for "opened" — there's nothing to guide the agent about while a session is still active.
  */
@@ -23,7 +23,7 @@ export function nextStepGuidance(status: SessionStatus): string | undefined {
 }
 
 /**
- * Guidance for `inkloop <file>` once a session URL has been printed (issue #39). Same text
+ * Guidance for `inkloop <file>` once a session URL has been printed. Same text
  * whether the session was freshly opened or resumed — the next action is always the same, and
  * unlike nextStepGuidance() above this isn't keyed off session status at all.
  */
@@ -34,7 +34,7 @@ export const OPEN_NEXT_STEP =
 
 /**
  * Guidance for `inkloop poll <file>` once it returns a feedback batch and the session is still
- * open (issue #39). The ended case reuses nextStepGuidance() instead, via the same `next_step`
+ * open. The ended case reuses nextStepGuidance() instead, via the same `next_step`
  * field — see poll.ts.
  */
 export const POLL_FEEDBACK_NEXT_STEP =

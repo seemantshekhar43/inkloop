@@ -62,7 +62,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Flattens one FeedbackItem into a fixed-column TOON row (issue #15). `target`'s sub-fields are
+ * Flattens one FeedbackItem into a fixed-column TOON row. `target`'s sub-fields are
  * hoisted to top-level `target_*` columns rather than kept nested: TOON's tabular form only
  * applies to a column when every row's value there is a primitive, or every row's nested object
  * has the *same* keys (spec §9.3) — but `target`'s optional fields (selector, offsets, quote,
@@ -91,13 +91,13 @@ function feedbackItemToToonRow(item: FeedbackItem): ToonRow {
 }
 
 /**
- * Implements `inkloop poll <file>` (issue #7): the agent-facing half of the core loop. Blocks
+ * Implements `inkloop poll <file>`: the agent-facing half of the core loop. Blocks
  * until feedback is queued, re-issuing the bounded server-side long-poll request automatically
  * on each empty result so the caller's single invocation blocks indefinitely from its own
  * perspective. stdout carries only the final feedback payload (as JSON); every progress banner
  * goes to stderr, keeping stdout parseable as a single payload for the caller.
  *
- * The payload is always `{ items, next_step, ... }` (issue #39) rather than a bare items array:
+ * The payload is always `{ items, next_step, ... }` rather than a bare items array:
  * `next_step` spells out the literal next command, and — when the session ended mid-wait, with or
  * without a final batch of items — `ended`/`endedBy` ride along too, sourced from the server's own
  * `next_step` for that case (see create-server.ts's handlePollRoute). Returning as soon as `ended`
@@ -168,7 +168,7 @@ export async function runPollCommand(
     const ended = body?.ended === true;
 
     if (items.length > 0 || ended) {
-      // TOON output (issue #15): the items table and the trailing scalar fields are two
+      // TOON output: the items table and the trailing scalar fields are two
       // independent fragments joined with a newline, matching how the reference TOON encoder
       // renders one root object with a tabular array property followed by keyed scalar
       // properties (see test/shared/toon.golden.test.ts for the byte-for-byte proof).

@@ -1,22 +1,18 @@
 /**
  * Minimal, hand-rolled TOON (Token-Oriented Object Notation, toonformat.dev) encoder for
- * inkloop's agent-facing CLI output (issue #15): `inkloop poll`'s `items` batch and the flat
+ * inkloop's agent-facing CLI output: `inkloop poll`'s `items` batch and the flat
  * `{status, endedBy, next_step}`-shaped payloads `poll`/`end` emit when a session has ended.
  * TOON declares a uniform array's field list once in a header and streams one row per line,
- * instead of repeating every key as JSON does per object — the exact win for a batch of
- * similarly-shaped feedback items.
+ * instead of repeating every key as JSON does per object.
  *
- * This is deliberately *not* a general JSON<->TOON codec (see AGENTS.md's zero-bloat dependency
- * policy): it covers only what inkloop's four fixed output shapes need — flat objects of
- * string/number/boolean/null values, and a single tabular array of uniform flat rows — and it
- * only ever *encodes*. inkloop never decodes TOON: the reader on the other end is the agent's
- * own model reading stdout directly, the same way it already reads today's JSON output.
+ * Deliberately *not* a general JSON<->TOON codec (see AGENTS.md's zero-bloat dependency policy):
+ * it covers only what inkloop's four fixed output shapes need, and only ever *encodes* — inkloop
+ * never decodes TOON.
  *
  * Kept spec-faithful (quoting/escaping rules in particular) by golden-testing this module
  * byte-for-byte against the reference `@toon-format/toon` package — see
- * test/shared/toon.golden.test.ts. That package is a devDependency only (zero runtime
- * dependencies itself); it never ships in the published `inkloop` package, which publishes only
- * `dist` (see package.json's "files").
+ * test/shared/toon.golden.test.ts. That package is a devDependency only; it never ships in the
+ * published `inkloop` package.
  */
 
 /** A single TOON cell/field value. `null` stands in for "this optional field doesn't apply to

@@ -153,7 +153,7 @@ void test("claimPendingFeedback hides a claimed batch, and commitDeliveredFeedba
   assert.ok(all.every((i) => typeof i.deliveredAt === "string"));
 });
 
-void test("issue #115: a claim that's never confirmed delivered ages out and is reclaimed instead of being lost", async () => {
+void test("a claim that's never confirmed delivered ages out and is reclaimed instead of being lost", async () => {
   const stateRoot = await tempStateRoot();
   const hash = "5".repeat(16);
   await appendFeedback(hash, [item("1")], stateRoot);

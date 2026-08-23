@@ -67,7 +67,7 @@
   }
 
   /** Removes a queued-but-unsent item by id, requested by the review shell's pill "×" control
-   * (issue #18). No-ops silently if the id is already gone (e.g. a stale click after Send). */
+   *. No-ops silently if the id is already gone (e.g. a stale click after Send). */
   function removeQueueItem(id: string): void {
     const index = queue.findIndex((item) => item.id === id);
     if (index === -1) return;
@@ -107,7 +107,7 @@
   }
 
   /**
-   * A short, deterministic content fingerprint (issue #10): FNV-1a over a string, chosen over
+   * A short, deterministic content fingerprint: FNV-1a over a string, chosen over
    * Web Crypto's subtle.digest because that's async and this needs to run synchronously inline
    * with selection handling. Not a security hash — collisions are an acceptable, low-stakes risk
    * here (worst case: a genuinely-drifted annotation stays unflagged until a future recheck),
@@ -134,7 +134,7 @@
       outline: 2px solid #6f5bff; outline-offset: 1px; background: rgba(111, 91, 255, 0.08);
     }
     .inkloop-composer {
-      /* Issue #64: widened ~1.4x (280px -> 392px) — comments longer than a line or two were
+      /* widened ~1.4x (280px -> 392px) — comments longer than a line or two were
          cramped into a lot of internal scrolling at the old size. */
       position: fixed; z-index: 2147483647; max-width: 392px;
       font: 13px/1.4 system-ui, sans-serif; background: #1c1c22; color: #f2f2f5;
@@ -179,7 +179,7 @@
 
   /** Pins the highlight box to a viewport rect and shows it, independent of picking mode — used
    * both by the hover-highlight during picking and to keep the picked element/range visually
-   * anchored for as long as the composer stays open (issue #27). */
+   * anchored for as long as the composer stays open. */
   function pinHighlight(rect: DOMRectReadOnly): void {
     highlight.style.left = `${rect.left}px`;
     highlight.style.top = `${rect.top}px`;
@@ -189,7 +189,7 @@
   }
 
   /**
-   * Auto-grows the textarea to fit its content (issue #41), up to the CSS max-height above,
+   * Auto-grows the textarea to fit its content, up to the CSS max-height above,
    * beyond which it scrolls internally instead of continuing to grow. Resetting height to "auto"
    * first (rather than only ever growing) lets scrollHeight shrink back down too, e.g. after the
    * user deletes a line or the composer is reopened with an empty value.
@@ -213,7 +213,7 @@
     pendingTarget = null;
   }
 
-  // rect is the picked element/range's own bounding box (issue #27) — the highlight stays pinned
+  // rect is the picked element/range's own bounding box — the highlight stays pinned
   // to it for as long as the composer is open, not just during the hover/pick phase, so the human
   // keeps the visual anchor for what they're commenting on while writing the comment.
   function showComposerAt(x: number, y: number, target: FeedbackTarget, rect: DOMRectReadOnly): void {
@@ -239,16 +239,13 @@
   let pickingElement = false;
 
   /**
-   * Issue #42 follow-up: the OS-default "crosshair" cursor (a bare black "+") reads as generic
-   * browser chrome, not something inkloop drew on purpose, and a target-reticle replacement
-   * (tried first) still read as the same crosshair shape just recolored. A small comment-bubble
-   * glyph instead says "click to annotate" on its own terms — same violet accent used everywhere
-   * else a pick is in progress (the highlight outline below, the review shell's own "Sidenote"
-   * toggle), with a dark outline so it stays legible over light-background artifacts too. Hotspot
-   * sits at the tip of the bubble's tail, the same "this corner is where the click lands"
-   * convention comment-cursor patterns elsewhere (Figma, Notion) use. Data URI, not a network
-   * asset — matches the rest of this SDK's zero-fetch constraint. Falls back to "crosshair" for
-   * the rare browser that rejects the custom cursor image outright.
+   * The OS-default "crosshair" cursor reads as generic browser chrome, not something inkloop
+   * drew on purpose. A small comment-bubble glyph instead says "click to annotate" on its own
+   * terms — same violet accent used everywhere else a pick is in progress, with a dark outline
+   * so it stays legible over light-background artifacts. Hotspot sits at the tip of the bubble's
+   * tail, the same "this corner is where the click lands" convention other comment-cursor
+   * patterns use. Data URI, not a network asset — matches this SDK's zero-fetch constraint.
+   * Falls back to "crosshair" for the rare browser that rejects the custom cursor image.
    */
   const PICK_CURSOR_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">' +
@@ -265,7 +262,7 @@
    * it's obvious a click will select rather than click through, and a postMessage telling the
    * review shell the real current state. The shell used to guess this optimistically from its
    * own toggle button clicks alone, which drifted out of sync as soon as a pick completed
-   * (issue #18). Picking mode itself now stays on across multiple picks (issue #54) — this only
+   *. Picking mode itself now stays on across multiple picks — this only
    * flips off on an explicit re-toggle or one of the other call sites that already turn it off
    * today (markEnded, live reload).
    */
@@ -281,7 +278,7 @@
   }
 
   /**
-   * Issue #62: <body>/<html> themselves are never a meaningful pick target: they're the page's outer
+   * <body>/<html> themselves are never a meaningful pick target: they're the page's outer
    * wrapper, not "an element" in the sense a reviewer means when picking one to comment on. Once
    * the cursor is over empty space inside that wrapper (below the artifact's real content, in its
    * padding, etc.) event.target still resolves to one of these two, which without this check kept
@@ -296,7 +293,7 @@
     "mousemove",
     (event) => {
       // Also gate on pendingTarget: while the composer is open the highlight is pinned to the
-      // just-picked element/range (issue #27) and must stay put, not get dragged around by the
+      // just-picked element/range and must stay put, not get dragged around by the
       // mouse moving over the rest of the artifact behind the composer.
       if (!pickingElement || pendingTarget) return;
       const target = event.target;
@@ -312,9 +309,8 @@
   /**
    * True for a same-document fragment link (e.g. `href="#some-id"`) pointing at the page's own
    * current path/query — the browser's native fragment navigation only scrolls within the
-   * existing document, it can never navigate the iframe away, so issue #37's guard just below has
-   * no real navigation to block here (issue #116). Anchor properties (pathname/search/hash/origin)
-   * are already resolved against the document, so this doesn't need its own URL parsing.
+   * existing document, so it never navigates the iframe away and the guard just below has
+   * nothing to block here.
    */
   function isSameDocumentFragmentLink(link: HTMLAnchorElement): boolean {
     return (
@@ -326,14 +322,14 @@
   }
 
   /**
-   * Never let the artifact's own links navigate the review iframe away (issue #37) — a reviewer
+   * Never let the artifact's own links navigate the review iframe away — a reviewer
    * clicking or selecting an ordinary `<a href>` (a citation, a "view source" link, anything an
    * agent legitimately adds) would otherwise lose the whole review surface with no way back short
    * of reloading the session URL. Applies regardless of picking mode: even outside element-picking,
    * a click/selection on a link is still a click inside the artifact, not a request to browse away
    * from it.
    *
-   * Exempts same-document fragment links (issue #116): an internal cross-reference like
+   * Exempts same-document fragment links: an internal cross-reference like
    * `href="#f-simplify-debts"` was getting the same blanket preventDefault() as a real navigating
    * link, silently breaking table-of-contents/build-order patterns several stencils recommend,
    * even though a fragment-only link can't lose the review surface in the first place.
@@ -355,7 +351,7 @@
   document.addEventListener(
     "click",
     (event) => {
-      // Issue #54: picking mode stays on across picks, so also skip while the composer for a
+      // picking mode stays on across picks, so also skip while the composer for a
       // prior pick is still open (pendingTarget set) rather than re-picking out from under it.
       if (!pickingElement || pendingTarget) return;
       const target = event.target;
@@ -376,7 +372,7 @@
   // ---- Text-range picker ------------------------------------------------------------------
 
   document.addEventListener("mouseup", (event) => {
-    // Issue #80: annotating a text range requires Sidenote to be active, same as the element
+    // annotating a text range requires Sidenote to be active, same as the element
     // picker just above - a bare native word/paragraph selection (double/triple-click) must not
     // open the composer on its own just because it happens to be non-collapsed.
     if (!pickingElement || pendingTarget) return;
@@ -410,7 +406,7 @@
     showComposerAt(event.clientX, event.clientY, target, range.getBoundingClientRect());
   });
 
-  // ---- postMessage bridge to the parent (review shell, issue #6) -------------------------
+  // ---- postMessage bridge to the parent (review shell) -----------------------------------
 
   window.addEventListener("message", (event) => {
     if (event.source !== window.parent || event.origin !== window.location.origin) return;
@@ -431,7 +427,7 @@
         setPickingElement(!pickingElement);
         break;
       case "inkloop:set-picking":
-        // Issue #117: unlike the toggle above, this sets picking to an explicit value rather
+        // unlike the toggle above, this sets picking to an explicit value rather
         // than flipping it — used by the shell to resync a freshly-reloaded iframe with its own
         // still-on picking state after a live reload, where reusing the toggle message naively
         // would risk a double-toggle race (see review-shell.ts's inkloop:ready handler). A no-op
@@ -457,7 +453,7 @@
     }
   });
 
-  // ---- Public API for artifact-authored JS (issue #114) --------------------------------
+  // ---- Public API for artifact-authored JS --------------------------------
 
   /**
    * The one supported entry point into the feedback queue for the artifact's *own* script, as
@@ -484,7 +480,7 @@
 
   /**
    * Re-applies unsent queue items and scroll position the review shell handed back after a live
-   * reload (issue #8) reloaded this iframe from scratch. The shell already holds this state
+   * reload reloaded this iframe from scratch. The shell already holds this state
    * continuously via the inkloop:queue/inkloop:scroll messages below — sent unconditionally on
    * every inkloop:ready, including the very first (non-reload) load, where both are empty/zero
    * and this is a harmless no-op.
@@ -505,7 +501,7 @@
     }
   }
 
-  // ---- Scroll reporting (issue #8) -------------------------------------------------------
+  // ---- Scroll reporting -------------------------------------------------------
 
   /** Throttles scroll reports to at most one per SCROLL_REPORT_THROTTLE_MS, via setTimeout
    * rather than requestAnimationFrame — rAF callbacks are heavily throttled (by seconds, not
@@ -547,13 +543,13 @@
     }
   }
 
-  // ---- Drift detection (issue #10) --------------------------------------------------------
+  // ---- Drift detection --------------------------------------------------------
 
   /**
    * Recomputes the live fingerprint of every not-yet-delivered text-range annotation against the
    * *current* DOM and reports any mismatch to the server, so `inkloop poll` can hand the agent a
    * `drifted: true` flag instead of letting it resolve a comment against a passage that moved.
-   * Runs once per artifact load, including every live-reload (issue #8) — since a full iframe
+   * Runs once per artifact load, including every live-reload — since a full iframe
    * reload re-runs this whole IIFE from scratch, that's the natural check-in point: it's exactly
    * when the artifact the agent just revised becomes the live DOM this function reads.
    *
@@ -599,11 +595,11 @@
   }
   void checkDrift();
 
-  // ---- Suggested prompts (issue #73) ------------------------------------------------------
+  // ---- Suggested prompts ------------------------------------------------------
   /**
    * Contextual starter prompts for the review shell's composer, instead of a blank box on first
-   * open. Two tiers, both computed fresh on every load including live reloads (issue #8's full
-   * iframe reload re-runs this whole IIFE, so that's the natural recompute point):
+   * open. Two tiers, both computed fresh on every load including live reloads (a full iframe
+   * reload re-runs this whole IIFE, so that's the natural recompute point):
    *
    *  1. Agent-embedded (readEmbeddedSuggestions below) — the agent that wrote this artifact is
    *     already the one best placed to know what's worth asking about it, so this takes priority
