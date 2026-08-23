@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { decode } from "@toon-format/toon";
 import { runPollCommand } from "../../../src/cli/commands/poll.js";
 import { loadServerConfig } from "../../../src/server/config.js";
 import { createInkloopServer, type InkloopServer } from "../../../src/server/create-server.js";
@@ -91,7 +92,7 @@ void test("returns queued feedback already present when the poll call is made", 
 
     const { code, text } = await captureWrite(process.stdout, () => runPollCommand(artifactPath));
     assert.equal(code, 0);
-    const body = JSON.parse(text) as { items: Array<{ id: string; comment: string }>; next_step: string };
+    const body = decode(text) as { items: Array<{ id: string; comment: string }>; next_step: string };
     assert.equal(body.items.length, 1);
     assert.equal(body.items[0]?.comment, "pre-queued");
     assert.match(body.next_step, /inkloop poll/);
@@ -120,7 +121,7 @@ void test("blocks across an empty poll round-trip and returns once feedback arri
 
     const { code, text } = await captureWrite(process.stdout, () => runPollCommand(artifactPath));
     assert.equal(code, 0);
-    const body = JSON.parse(text) as { items: Array<{ id: string }> };
+    const body = decode(text) as { items: Array<{ id: string }> };
     assert.deepEqual(
       body.items.map((i) => i.id),
       ["late-item"],
@@ -137,7 +138,7 @@ void test("returns immediately with next_step once the session ends, even with n
 
     const { code, text } = await captureWrite(process.stdout, () => runPollCommand(artifactPath));
     assert.equal(code, 0);
-    const body = JSON.parse(text) as {
+    const body = decode(text) as {
       items: unknown[];
       ended: boolean;
       endedBy: string;

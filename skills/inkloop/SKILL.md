@@ -49,9 +49,18 @@ You do not need inkloop installed globally - invoke it with `npx -y inkloop <htm
 4. Run `npx -y inkloop poll <html-file>` to long-poll for the human's queued annotations. This
    blocks, retrying automatically on each empty result, until feedback actually arrives - leave it
    running rather than working around it. Progress goes to stderr; the only thing written to stdout
-   is the final payload, as JSON: `{ items, next_step, ... }`. `next_step` spells out the literal
-   next command - trust it over re-deriving the loop from memory, especially once a session has
-   ended (`ended`/`endedBy` ride along too in that case).
+   is the final payload, in TOON (toonformat.dev) - a compact table for `items` plus one
+   `key: value` line per remaining field, e.g.:
+   ```
+   items[2]{id,target_kind,target_selector,...,comment,createdAt,...}:
+     a1,element,h1,...,"make the heading bigger",2026-08-23T10:00:01.000Z,...
+     a2,general,null,...,"looks great overall",2026-08-23T10:00:00.000Z,...
+   next_step: Revise the artifact based on this feedback, then run `inkloop poll <file> ...`
+   ```
+   `next_step` spells out the literal next command - trust it over re-deriving the loop from
+   memory, especially once a session has ended (`ended`/`endedBy` ride along too in that case, and
+   `items` is `[]`). `inkloop end <html-file>` (step 7) prints the same TOON style, just without an
+   `items` table.
    On rounds after the first, pass `--agent-reply "<one-line summary of what changed>"` so the
    round-history panel shows your reply before the poll blocks again.
 5. Revise the `.html` file in place based on the feedback. No need to re-run `inkloop <file>` - the
@@ -74,15 +83,18 @@ You do not need inkloop installed globally - invoke it with `npx -y inkloop <htm
 
 ## Feedback shape
 
-Each item `inkloop poll` hands back has:
+Each row `inkloop poll`'s `items` table hands back has (columns flattened for the table - `target_*`
+below is `target.*` in the underlying data model, not nested in the TOON output):
 
-- `target.kind`: `"element"`, `"text-range"`, or `"general"` (a free-text note not tied to anything
+- `target_kind`: `"element"`, `"text-range"`, or `"general"` (a free-text note not tied to anything
   specific)
-- `target.selector` and, for text ranges, `target.quote` - what was picked
+- `target_selector` and, for text ranges, `target_quote` - what was picked (`null` when not
+  applicable to that row's kind)
 - `comment`: the human's note
 - `drifted`: `true` if a `text-range` annotation's anchored text has since changed underneath it
   (e.g. you already edited that passage in an earlier round) - treat this as needing re-anchoring
-  against the current content, not as an ordinary comment to resolve at face value
+  against the current content, not as an ordinary comment to resolve at face value; `null` when not
+  drifted
 
 ## Rules
 

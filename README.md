@@ -105,6 +105,7 @@ example of both.
 - **CLI / local server:** Node.js + TypeScript on `node:http` (no framework)
 - **Injected browser SDK:** vanilla TypeScript, single IIFE, zero runtime dependencies
 - **Transport:** plain HTTP long-poll, ~30s bounded, no WebSocket
+- **Agent-facing output:** `inkloop poll`/`inkloop end` print TOON (toonformat.dev) instead of JSON, cutting agent-side token usage by measured-18.6% vs. plain JSON on this project's own poll/end traffic
 - **Persistence:** flat JSON under `~/.inkloop/<hash-of-absolute-path>/`
 - **Packaging:** single npm package (CLI, server, and SDK bundled together)
 

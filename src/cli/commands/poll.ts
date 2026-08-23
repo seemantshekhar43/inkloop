@@ -5,6 +5,7 @@ import { resolveArtifactPath } from "../../shared/paths.js";
 import { loadServerConfig } from "../../server/config.js";
 import type { ServerConfig } from "../../server/config.js";
 import { ensureServerRunning } from "../../server/ensure-running.js";
+import { encodeToonObject, encodeToonTable, type ToonRow } from "../../shared/toon.js";
 
 export interface PollCommandOptions {
   /** Message to post via POST /session/:hash/agent-reply before polling again. */
@@ -58,6 +59,35 @@ function requestJson(
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Flattens one FeedbackItem into a fixed-column TOON row (issue #15). `target`'s sub-fields are
+ * hoisted to top-level `target_*` columns rather than kept nested: TOON's tabular form only
+ * applies to a column when every row's value there is a primitive, or every row's nested object
+ * has the *same* keys (spec §9.3) — but `target`'s optional fields (selector, offsets, quote,
+ * fingerprint) genuinely vary item to item, so nesting it would force list-form fallback and
+ * lose the whole token-savings point of a table. Flattening with `null` standing in for "not set
+ * on this item" keeps every column primitive and uniform instead. Field order here becomes the
+ * TOON header's column order (encodeToonTable takes it from the first row's key order).
+ */
+function feedbackItemToToonRow(item: FeedbackItem): ToonRow {
+  return {
+    id: item.id,
+    target_kind: item.target.kind,
+    target_selector: item.target.selector ?? null,
+    target_startOffset: item.target.startOffset ?? null,
+    target_endOffset: item.target.endOffset ?? null,
+    target_quote: item.target.quote ?? null,
+    target_fingerprint: item.target.fingerprint ?? null,
+    comment: item.comment,
+    createdAt: item.createdAt,
+    deliveredAt: item.deliveredAt ?? null,
+    claimedAt: item.claimedAt ?? null,
+    round: item.round ?? null,
+    drifted: item.drifted ?? null,
+    driftedAt: item.driftedAt ?? null,
+  };
 }
 
 /**
@@ -138,15 +168,15 @@ export async function runPollCommand(
     const ended = body?.ended === true;
 
     if (items.length > 0 || ended) {
-      const payload: Record<string, unknown> = { items };
-      if (ended) {
-        payload["ended"] = true;
-        payload["endedBy"] = body?.endedBy;
-        payload["next_step"] = body?.next_step;
-      } else {
-        payload["next_step"] = POLL_FEEDBACK_NEXT_STEP;
-      }
-      process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+      // TOON output (issue #15): the items table and the trailing scalar fields are two
+      // independent fragments joined with a newline, matching how the reference TOON encoder
+      // renders one root object with a tabular array property followed by keyed scalar
+      // properties (see test/shared/toon.golden.test.ts for the byte-for-byte proof).
+      const itemsBlock = encodeToonTable("items", items.map(feedbackItemToToonRow));
+      const tailBlock = ended
+        ? encodeToonObject({ ended: true, endedBy: body?.endedBy ?? null, next_step: body?.next_step ?? null })
+        : encodeToonObject({ next_step: POLL_FEEDBACK_NEXT_STEP });
+      process.stdout.write(`${itemsBlock}\n${tailBlock}\n`);
       return 0;
     }
 
