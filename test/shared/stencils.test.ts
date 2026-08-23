@@ -163,7 +163,9 @@ void test("comparison/report/plan stencils each cross-reference the diagram sten
 });
 
 void test("DESIGN_BASELINE ships a mockup internal-scroll-region pattern distinct from the outer device frame (issue #119)", () => {
-  const scrollRegion = DESIGN_BASELINE.components.find((c) => c.startsWith("Mockup internal scroll region"));
+  const scrollRegion = DESIGN_BASELINE.components.find((c) =>
+    c.startsWith("Mockup internal scroll region"),
+  );
   assert.ok(scrollRegion, "expected a Mockup internal scroll region component entry");
   assert.match(scrollRegion ?? "", /scrollbar-width: none/);
   assert.match(scrollRegion ?? "", /::-webkit-scrollbar/);
