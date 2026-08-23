@@ -253,3 +253,27 @@ void test("issue #80: the text-range picker's mouseup listener requires Sidenote
     "the picking-state guard must run before the selection is ever inspected",
   );
 });
+
+void test("issue #114: window.inkloop.addNote exposes a public hook for artifact-authored JS to queue a general note", () => {
+  // Must exist as a real public entry point on window (distinct from the internal queueItem it
+  // wraps) so an artifact's own script - a decision-collection row's "send changes" handler - can
+  // call it directly, without reaching into the SDK's closured internals.
+  const hookIndex = sdkSource.indexOf("window.inkloop = {");
+  assert.ok(hookIndex >= 0, "expected window.inkloop to be assigned");
+  const addNoteIndex = sdkSource.indexOf("addNote(comment)", hookIndex);
+  assert.ok(addNoteIndex >= 0, "expected an addNote(comment) method on window.inkloop");
+  const bodyEnd = sdkSource.indexOf("};", addNoteIndex);
+  const body = sdkSource.slice(addNoteIndex, bodyEnd);
+  assert.match(body, /queueItem\(\{\s*kind:\s*"general"\s*\},\s*comment\)/);
+});
+
+void test("issue #114: window.inkloop is only assigned after the standalone-load guard, not unconditionally", () => {
+  // window.inkloop must never exist when the artifact is opened directly outside a review session
+  // (the standalone-render invariant) - it has to sit after the `window === window.parent` early
+  // return the same way every other queue-mutating hook in this file already does.
+  const guardIndex = sdkSource.indexOf("window === window.parent");
+  assert.ok(guardIndex >= 0, "expected the standalone-load guard");
+  const hookIndex = sdkSource.indexOf("window.inkloop = {");
+  assert.ok(hookIndex >= 0, "expected window.inkloop to be assigned");
+  assert.ok(guardIndex < hookIndex, "window.inkloop must be assigned after the standalone-load guard");
+});

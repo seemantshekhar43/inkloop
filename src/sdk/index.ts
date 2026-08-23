@@ -457,6 +457,31 @@
     }
   });
 
+  // ---- Public API for artifact-authored JS (issue #114) --------------------------------
+
+  /**
+   * The one supported entry point into the feedback queue for the artifact's *own* script, as
+   * opposed to the SDK's own composer UI (element pick / text selection) or the review shell's
+   * postMessage bridge above (parent -> iframe only, driven by the reviewer typing in the shell's
+   * composer). Exists so a stencil that collects a *batch* of structured decisions (a per-row
+   * triage control, a set of answered open questions) can fold every pending change into one
+   * consolidated note on a single "send changes" action, instead of the artifact wiring up one
+   * inkloop annotation per row via the general element/text-range loop - see design_baseline's
+   * "Decision-collection row" pattern in shared/stencils.ts for the worked example.
+   *
+   * Deliberately just a thin wrapper over the same queueItem/notifyQueueChanged path the built-in
+   * composer already uses - no new wire format, no new server endpoint. Only exists once this
+   * guard clause up top has already confirmed we're inside a review session's iframe, so an
+   * artifact's script must feature-detect it (`if (window.inkloop) ...`) the same way any
+   * SDK-dependent script already has to guard the standalone-render case (see the `loopable`
+   * stencil's rules) - `window.inkloop` is simply undefined when the artifact is opened directly.
+   */
+  (window as unknown as { inkloop: { addNote(comment: string): void } }).inkloop = {
+    addNote(comment: string): void {
+      queueItem({ kind: "general" }, comment);
+    },
+  };
+
   /**
    * Re-applies unsent queue items and scroll position the review shell handed back after a live
    * reload (issue #8) reloaded this iframe from scratch. The shell already holds this state
