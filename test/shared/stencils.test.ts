@@ -74,6 +74,15 @@ void test("DESIGN_BASELINE's priority prompts stating which tier was used (issue
   );
 });
 
+void test("DESIGN_BASELINE's tier disclosure clarifies it belongs in the delivery message, not the artifact page (issue #120)", () => {
+  assert.ok(
+    DESIGN_BASELINE.priority.some(
+      (p) => /delivery message/i.test(p) && /not as visible content/i.test(p),
+    ),
+    "priority should clarify the tier disclosure belongs in the agent's delivery message, not baked into the artifact page",
+  );
+});
+
 void test("DESIGN_BASELINE names a component-library fallback and subject-fit note (issue #90)", () => {
   assert.ok(
     DESIGN_BASELINE.priority.some((p) => /CDN/.test(p) && /fit/i.test(p)),
@@ -135,4 +144,30 @@ void test("DESIGN_BASELINE has all non-empty issue #90 sections", () => {
   assert.ok(DESIGN_BASELINE.responsive.length > 0);
   assert.ok(DESIGN_BASELINE.theming.length > 0);
   assert.ok(DESIGN_BASELINE.layout_safety.length > 0);
+});
+
+void test("DESIGN_BASELINE's patterns name a Mermaid diagram as an option for any stencil, not just `diagram` (issue #118)", () => {
+  const diagramCrossRef = DESIGN_BASELINE.patterns.find((p) => /Mermaid/i.test(p));
+  assert.ok(diagramCrossRef, "expected a pattern entry naming Mermaid as a cross-stencil option");
+  assert.match(diagramCrossRef ?? "", /`diagram` stencil/);
+});
+
+void test("comparison/report/plan stencils each cross-reference the diagram stencil for structure/flow content (issue #118)", () => {
+  for (const id of ["plan", "comparison", "report"] as const) {
+    const stencil = getStencil(id);
+    assert.ok(
+      stencil?.rules.some((r) => /diagram/i.test(r) && /Mermaid/i.test(r)),
+      `${id} rules should point to the diagram stencil/Mermaid when structure or flow is part of the content`,
+    );
+  }
+});
+
+void test("DESIGN_BASELINE ships a mockup internal-scroll-region pattern distinct from the outer device frame (issue #119)", () => {
+  const scrollRegion = DESIGN_BASELINE.components.find((c) =>
+    c.startsWith("Mockup internal scroll region"),
+  );
+  assert.ok(scrollRegion, "expected a Mockup internal scroll region component entry");
+  assert.match(scrollRegion ?? "", /scrollbar-width: none/);
+  assert.match(scrollRegion ?? "", /::-webkit-scrollbar/);
+  assert.match(scrollRegion ?? "", /-webkit-overflow-scrolling: touch/);
 });
