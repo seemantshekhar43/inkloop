@@ -253,3 +253,55 @@ void test("issue #80: the text-range picker's mouseup listener requires Sidenote
     "the picking-state guard must run before the selection is ever inspected",
   );
 });
+
+void test("issue #114: window.inkloop.addNote exposes a public hook for artifact-authored JS to queue a general note", () => {
+  // Must exist as a real public entry point on window (distinct from the internal queueItem it
+  // wraps) so an artifact's own script - a decision-collection row's "send changes" handler - can
+  // call it directly, without reaching into the SDK's closured internals.
+  const hookIndex = sdkSource.indexOf("window.inkloop = {");
+  assert.ok(hookIndex >= 0, "expected window.inkloop to be assigned");
+  const addNoteIndex = sdkSource.indexOf("addNote(comment)", hookIndex);
+  assert.ok(addNoteIndex >= 0, "expected an addNote(comment) method on window.inkloop");
+  const bodyEnd = sdkSource.indexOf("};", addNoteIndex);
+  const body = sdkSource.slice(addNoteIndex, bodyEnd);
+  assert.match(body, /queueItem\(\{\s*kind:\s*"general"\s*\},\s*comment\)/);
+});
+
+void test("issue #114: window.inkloop is only assigned after the standalone-load guard, not unconditionally", () => {
+  // window.inkloop must never exist when the artifact is opened directly outside a review session
+  // (the standalone-render invariant) - it has to sit after the `window === window.parent` early
+  // return the same way every other queue-mutating hook in this file already does.
+  const guardIndex = sdkSource.indexOf("window === window.parent");
+  assert.ok(guardIndex >= 0, "expected the standalone-load guard");
+  const hookIndex = sdkSource.indexOf("window.inkloop = {");
+  assert.ok(hookIndex >= 0, "expected window.inkloop to be assigned");
+  assert.ok(guardIndex < hookIndex, "window.inkloop must be assigned after the standalone-load guard");
+});
+
+void test("suggested prompts are capped at 2, prioritizing concrete actionable defects over the vaguer heading-explanation prompt", () => {
+  assert.match(sdkSource, /const MAX_SUGGESTIONS = 2;/);
+  const fnStart = sdkSource.indexOf("function computeHeuristicSuggestions");
+  const fnEnd = sdkSource.indexOf("\n  }", fnStart);
+  const fnBody = sdkSource.slice(fnStart, fnEnd);
+
+  // The alt-text/form/long-paragraph checks (concrete, actionable) must appear before the
+  // section-heading check (a vaguer "explain the reasoning" discussion starter) so the first
+  // MAX_SUGGESTIONS slots go to the most actionable prompts a reviewer actually sees.
+  const badImageIndex = fnBody.indexOf('querySelectorAll("img")');
+  const formIndex = fnBody.indexOf('querySelectorAll("form")');
+  const longParagraphIndex = fnBody.indexOf('querySelectorAll("p")');
+  const headingIndex = fnBody.indexOf('querySelectorAll("h1, h2, h3")');
+  assert.ok(badImageIndex >= 0 && formIndex >= 0 && longParagraphIndex >= 0 && headingIndex >= 0);
+  assert.ok(badImageIndex < headingIndex, "alt-text check should be prioritized over the heading prompt");
+  assert.ok(formIndex < headingIndex, "form check should be prioritized over the heading prompt");
+  assert.ok(
+    longParagraphIndex < headingIndex,
+    "long-paragraph check should be prioritized over the heading prompt",
+  );
+
+  // The generic fallback list is trimmed to the two most actionable entries - the vague
+  // "what's the reasoning behind the overall layout" prompt is gone.
+  assert.doesNotMatch(fnBody, /What's the reasoning behind the overall layout/);
+  assert.match(fnBody, /Is this accessible \(contrast, keyboard navigation, alt text\)\?/);
+  assert.match(fnBody, /Any way to simplify this further\?/);
+});

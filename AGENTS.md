@@ -75,9 +75,10 @@ Mermaid example above: a plain
 ```
 tag anywhere in the artifact's `<body>`, inert to any browser that doesn't know to look for it, so
 opening the saved `.html` file directly still renders identically. The injected SDK
-(`src/sdk/index.ts`) reads it (up to 3 strings, each capped in length) and hands it to the review
-shell; if it's absent, malformed, or empty, the SDK falls back to its own DOM heuristics
-(missing alt text, a long paragraph, a section heading, etc.) instead of showing nothing.
+(`src/sdk/index.ts`) reads it (up to 2 strings, each capped in length) and hands it to the review
+shell; if it's absent, malformed, or empty, the SDK falls back to its own DOM heuristics, ordered
+most-actionable first (missing alt text, unhandled form validation, an over-long paragraph, a
+section heading) instead of showing nothing.
 
 Deliberately *not* an inkloop-side LLM call: the agent that just wrote the artifact is already the
 one best placed to know what's worth asking about it, and generating the prompts itself avoids

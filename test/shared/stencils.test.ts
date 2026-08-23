@@ -171,3 +171,32 @@ void test("DESIGN_BASELINE ships a mockup internal-scroll-region pattern distinc
   assert.match(scrollRegion ?? "", /::-webkit-scrollbar/);
   assert.match(scrollRegion ?? "", /-webkit-overflow-scrolling: touch/);
 });
+
+void test("DESIGN_BASELINE's patterns name a reusable open-questions/undecided-items section for any stencil (issue #114)", () => {
+  const openQuestions = DESIGN_BASELINE.patterns.find((p) => p.startsWith("Open questions"));
+  assert.ok(openQuestions, "expected an open-questions/undecided-items pattern entry");
+  assert.match(openQuestions ?? "", /`plan`/);
+  assert.match(openQuestions ?? "", /`report`/);
+  assert.match(openQuestions ?? "", /`comparison`/);
+});
+
+void test("plan/report/comparison stencils each point at the shared open-questions pattern (issue #114)", () => {
+  for (const id of ["plan", "report", "comparison"] as const) {
+    const stencil = getStencil(id);
+    assert.ok(
+      stencil?.rules.some((r) => /open.questions/i.test(r) && /issue #114/.test(r)),
+      `${id} rules should reference design_baseline's open-questions pattern`,
+    );
+  }
+});
+
+void test("DESIGN_BASELINE ships a decision-collection-row pattern that batches structured input into one note (issue #114)", () => {
+  const decisionRow = DESIGN_BASELINE.patterns.find((p) => p.startsWith("Decision-collection row"));
+  assert.ok(decisionRow, "expected a Decision-collection row pattern entry");
+  assert.match(decisionRow ?? "", /window\.inkloop\.addNote/);
+  assert.match(decisionRow ?? "", /feature-detect/);
+  assert.match(decisionRow ?? "", /row-changed/);
+  // Explicitly artifact-authored JS, not a new inkloop feature requiring runtime injection -
+  // consistent with the zero-runtime-injection stance the theming/CDN-default work established.
+  assert.match(decisionRow ?? "", /artifact-authored JS, not a new inkloop feature/);
+});

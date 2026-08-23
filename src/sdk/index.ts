@@ -457,6 +457,31 @@
     }
   });
 
+  // ---- Public API for artifact-authored JS (issue #114) --------------------------------
+
+  /**
+   * The one supported entry point into the feedback queue for the artifact's *own* script, as
+   * opposed to the SDK's own composer UI (element pick / text selection) or the review shell's
+   * postMessage bridge above (parent -> iframe only, driven by the reviewer typing in the shell's
+   * composer). Exists so a stencil that collects a *batch* of structured decisions (a per-row
+   * triage control, a set of answered open questions) can fold every pending change into one
+   * consolidated note on a single "send changes" action, instead of the artifact wiring up one
+   * inkloop annotation per row via the general element/text-range loop - see design_baseline's
+   * "Decision-collection row" pattern in shared/stencils.ts for the worked example.
+   *
+   * Deliberately just a thin wrapper over the same queueItem/notifyQueueChanged path the built-in
+   * composer already uses - no new wire format, no new server endpoint. Only exists once this
+   * guard clause up top has already confirmed we're inside a review session's iframe, so an
+   * artifact's script must feature-detect it (`if (window.inkloop) ...`) the same way any
+   * SDK-dependent script already has to guard the standalone-render case (see the `loopable`
+   * stencil's rules) - `window.inkloop` is simply undefined when the artifact is opened directly.
+   */
+  (window as unknown as { inkloop: { addNote(comment: string): void } }).inkloop = {
+    addNote(comment: string): void {
+      queueItem({ kind: "general" }, comment);
+    },
+  };
+
   /**
    * Re-applies unsent queue items and scroll position the review shell handed back after a live
    * reload (issue #8) reloaded this iframe from scratch. The shell already holds this state
@@ -591,7 +616,7 @@
    *     when the artifact doesn't embed its own suggestions, so a reviewer still sees *something*
    *     rather than nothing on an artifact an agent didn't bother annotating.
    */
-  const MAX_SUGGESTIONS = 3;
+  const MAX_SUGGESTIONS = 2;
 
   function truncateForPrompt(text: string, max: number): string {
     const collapsed = text.trim().replace(/\s+/g, " ");
@@ -620,17 +645,10 @@
     if (!body) return [];
     const suggestions: string[] = [];
 
-    // Skip the first heading found - usually the artifact's own title, not a section worth
-    // singling out on its own.
-    const headings = Array.from(body.querySelectorAll("h1, h2, h3")).filter(
-      (el) => !isSdkNode(el) && (el.textContent ?? "").trim().length > 0,
-    );
-    const sectionHeading = headings[1] ?? headings[0];
-    if (sectionHeading) {
-      const label = truncateForPrompt(sectionHeading.textContent ?? "", 60);
-      suggestions.push(`Explain the reasoning behind the "${label}" section.`);
-    }
-
+    // Ordered by how directly actionable each one is, not by scan order - with only
+    // MAX_SUGGESTIONS slots to fill, a concrete defect the agent can act on immediately (missing
+    // alt text, unhandled form validation, an over-long paragraph) earns its slot ahead of a
+    // vaguer "explain the reasoning" prompt, which invites discussion rather than a fix.
     const badImage = Array.from(body.querySelectorAll("img")).find(
       (img) => !isSdkNode(img) && !(img.getAttribute("alt") ?? "").trim(),
     );
@@ -647,9 +665,25 @@
       suggestions.push(`Can this be simplified: "${label}"?`);
     }
 
+    // Skip the first heading found - usually the artifact's own title, not a section worth
+    // singling out on its own. Lowest priority of the content-derived suggestions: it's a
+    // discussion starter, not a specific defect, so it only fills a slot the ones above didn't.
+    if (suggestions.length < MAX_SUGGESTIONS) {
+      const headings = Array.from(body.querySelectorAll("h1, h2, h3")).filter(
+        (el) => !isSdkNode(el) && (el.textContent ?? "").trim().length > 0,
+      );
+      const sectionHeading = headings[1] ?? headings[0];
+      if (sectionHeading) {
+        const label = truncateForPrompt(sectionHeading.textContent ?? "", 60);
+        suggestions.push(`Explain the reasoning behind the "${label}" section.`);
+      }
+    }
+
+    // Only the two most actionable generic fallbacks - a reviewer with nothing else to go on
+    // gets a concrete accessibility check and a concrete simplification ask, not an open-ended
+    // "what's the reasoning behind the layout" that doesn't point at a specific next step.
     const genericFallbacks = [
       "Is this accessible (contrast, keyboard navigation, alt text)?",
-      "What's the reasoning behind the overall layout?",
       "Any way to simplify this further?",
     ];
     for (const fallback of genericFallbacks) {
