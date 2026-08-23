@@ -49,8 +49,8 @@ You do not need inkloop installed globally - invoke it with `npx -y inkloop <htm
 4. Run `npx -y inkloop poll <html-file>` to long-poll for the human's queued annotations. This
    blocks, retrying automatically on each empty result, until feedback actually arrives - leave it
    running rather than working around it. Progress goes to stderr; the only thing written to stdout
-   is the final payload, in TOON (toonformat.dev) - a compact table for `items` plus one `key:
-   value` line per remaining field, e.g.:
+   is the final payload, in TOON (toonformat.dev) - a compact table for `items` plus one
+   `key: value` line per remaining field, e.g.:
    ```
    items[2]{id,target_kind,target_selector,...,comment,createdAt,...}:
      a1,element,h1,...,"make the heading bigger",2026-08-23T10:00:01.000Z,...

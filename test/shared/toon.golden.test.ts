@@ -90,7 +90,7 @@ void test("matches reference encoder on strings that trigger quoting/escaping", 
       target_kind: "#tag",
       target_selector: "42",
       target_quote: "a:b",
-      comment: "line1\ntab\there\r\nand a backslash \\ and \"quotes\"",
+      comment: 'line1\ntab\there\r\nand a backslash \\ and "quotes"',
       createdAt: "not-a-real-date-but-still-a-string",
     }),
   ];

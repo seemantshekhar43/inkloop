@@ -42,14 +42,16 @@ function isNumericLike(value: string): boolean {
 /** Mirrors @toon-format/toon's escapeString exactly (spec §7.1): only `\\ " \n \r \t` get a
  * short escape, every other control char (U+0000-U+001F) becomes `\uXXXX`. */
 function escapeString(value: string): string {
-  return value
-    .replace(/\\/g, "\\\\")
-    .replace(/"/g, '\\"')
-    .replace(/\n/g, "\\n")
-    .replace(/\r/g, "\\r")
-    .replace(/\t/g, "\\t")
-    // eslint-disable-next-line no-control-regex -- intentional: spec 7.1 requires escaping every remaining control char.
-    .replace(/[\u0000-\u001F]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+  return (
+    value
+      .replace(/\\/g, "\\\\")
+      .replace(/"/g, '\\"')
+      .replace(/\n/g, "\\n")
+      .replace(/\r/g, "\\r")
+      .replace(/\t/g, "\\t")
+      // eslint-disable-next-line no-control-regex -- intentional: spec 7.1 requires escaping every remaining control char.
+      .replace(/[\u0000-\u001F]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`)
+  );
 }
 
 /** Mirrors @toon-format/toon's isSafeUnquoted (spec §7.2): a string can skip quotes only if
