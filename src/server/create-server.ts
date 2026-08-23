@@ -43,14 +43,14 @@ const POLL_CHECK_INTERVAL_MS = 300;
 /** Hard cap on an agent-reply POST body, same rationale as MAX_FEEDBACK_BODY_BYTES below. */
 const MAX_AGENT_REPLY_BODY_BYTES = 64 * 1024;
 
-/** Hard cap on a drift-report POST body (issue #10) — just a batch of ids, so this stays small. */
+/** Hard cap on a drift-report POST body — just a batch of ids, so this stays small. */
 const MAX_DRIFT_BODY_BYTES = 64 * 1024;
 
 /** Hard cap on a feedback POST body — an unauthenticated local server should never buffer an
  * unbounded request into memory, regardless of what shape validation would later reject it for. */
 const MAX_FEEDBACK_BODY_BYTES = 2 * 1024 * 1024;
 
-/** Hard cap on a tab-leave beacon body (issue #65) — just a tab id, so this stays tiny. */
+/** Hard cap on a tab-leave beacon body — just a tab id, so this stays tiny. */
 const MAX_TAB_LEAVE_BODY_BYTES = 4 * 1024;
 
 /**
@@ -88,11 +88,9 @@ function sendJson(res: http.ServerResponse, status: number, body: unknown): void
 
 /**
  * Like sendJson, but resolves once the response has actually been flushed instead of firing and
- * forgetting — see handlePollRoute's use of this for why (issue #115). Resolves `true` on a
- * normal "finish" (the response was fully handed off), `false` if the connection errors or closes
- * before that happens (client killed mid-flight, dropped connection, etc.), so the caller can
- * gate an unrecoverable side effect — here, persisting that feedback was delivered — on delivery
- * actually having gone out rather than merely having been attempted.
+ * forgetting — see handlePollRoute for why. Resolves `true` on a normal "finish", `false` if the
+ * connection errors or closes first, so the caller can gate an unrecoverable side effect (here,
+ * persisting that feedback was delivered) on delivery actually having gone out.
  */
 function sendJsonConfirmed(res: http.ServerResponse, status: number, body: unknown): Promise<boolean> {
   return new Promise((resolve) => {
@@ -208,30 +206,24 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * The long-poll side of the core loop (issue #7): blocks up to config.pollTimeoutMs, checking
- * for newly-queued feedback every POLL_CHECK_INTERVAL_MS, and returns as soon as any exists.
- * Returns an empty `items` array (still 200, not an error) on timeout — the CLI treats an empty
- * result as "nothing yet" and re-issues the request, so from the agent's perspective a single
- * `inkloop poll` call blocks indefinitely across as many of these bounded requests as it takes.
+ * The long-poll side of the core loop: blocks up to config.pollTimeoutMs, checking for
+ * newly-queued feedback every POLL_CHECK_INTERVAL_MS, and returns as soon as any exists. Returns
+ * an empty `items` array (still 200, not an error) on timeout — the CLI treats an empty result
+ * as "nothing yet" and re-issues the request, so a single `inkloop poll` call blocks
+ * indefinitely across as many of these bounded requests as it takes.
  *
- * Claiming and delivering the items it returns are two separate steps (issue #115), via
+ * Claiming and delivering the items it returns are two separate steps, via
  * claimPendingFeedback + sendJsonConfirmed + commitDeliveredFeedback: claim hides the batch from
- * other pollers immediately (so two overlapping polls can't both grab it), then it's only turned
- * into a permanent delivery — commitDeliveredFeedback — once this response is confirmed flushed
- * to the client. Marking delivered up front, before the response was known to have gone out (the
- * pre-#115 behavior), meant a claim that got lost in transit — the polling process killed, a
- * background job dying, the connection dropping — silently and permanently discarded that
- * feedback: it was on disk as delivered, but no process had ever actually received it. Now a lost
- * response instead leaves a claim that ages out (feedback-store.ts's CLAIM_VISIBILITY_MS) and
- * becomes visible again, so a later poll reclaims and resends it instead of it being lost.
+ * other pollers immediately, then it's only turned into a permanent delivery once this response
+ * is confirmed flushed to the client. That way a lost response (process killed, connection
+ * dropping) leaves a claim that ages out (feedback-store.ts's CLAIM_VISIBILITY_MS) and becomes
+ * visible again, rather than the feedback being silently discarded.
  *
- * Also watches the session's own status on every loop iteration (issue #9): if the session ends
- * — whether it was already ended before this call started, or ends mid-wait (e.g. the user
- * clicks "End session" in the browser while an agent is still polling) — this returns
- * immediately rather than waiting out the rest of the timeout, delivering whatever feedback was
- * still pending as the *final* batch alongside `ended`/`endedBy`/`next_step`. That's the "final
- * feedback batch... carries next_step guidance" half of the issue; the other half is the
- * no-pending-feedback case, which reaches the same `ended` shape with an empty `items` array.
+ * Also watches the session's own status on every loop iteration: if the session ends — already
+ * ended before this call started, or mid-wait (e.g. the user clicks "End session" in the browser
+ * while an agent is still polling) — this returns immediately rather than waiting out the rest
+ * of the timeout, delivering whatever feedback was still pending as the *final* batch alongside
+ * `ended`/`endedBy`/`next_step`.
  */
 async function handlePollRoute(
   res: http.ServerResponse,
@@ -314,7 +306,7 @@ async function handleAgentReplyRoute(
 }
 
 /**
- * The SDK's drift check (issue #10) posts here after recomputing text-range fingerprints against
+ * The SDK's drift check posts here after recomputing text-range fingerprints against
  * the live artifact on every load/reload — see sdk/index.ts's checkDrift. Idempotent per id (see
  * markFeedbackDrifted), so the SDK can freely re-report the same drifted id on a later reload
  * without needing to track what it already reported.
@@ -355,11 +347,10 @@ async function handleDriftRoute(
 }
 
 /**
- * The review shell's round-history panel (issue #21) fetches this on load and refreshes it
- * alongside the reload long-poll's own tick — see review-shell.ts's fetchHistory. Just a plain
- * GET, not a long-poll: history changes at the same low cadence as a "Send" click or an
- * `--agent-reply`, so there's no need for the bounded-wait machinery handlePollRoute and
- * handleReloadRoute use.
+ * The review shell's round-history panel fetches this on load and refreshes it alongside the
+ * reload long-poll's own tick — see review-shell.ts's fetchHistory. Just a plain GET, not a
+ * long-poll: history changes rarely enough that it doesn't need the bounded-wait machinery
+ * handlePollRoute and handleReloadRoute use.
  */
 async function handleHistoryRoute(res: http.ServerResponse, hash: string): Promise<void> {
   const record = await readSessionRecordByHash(hash);
@@ -373,22 +364,21 @@ async function handleHistoryRoute(res: http.ServerResponse, hash: string): Promi
 }
 
 /**
- * Live reload's long-poll route (issue #8): mirrors handlePollRoute's shape (bounded wait,
- * returns promptly on a real event or an empty-ish result on timeout) but waits on an in-process
+ * Live reload's long-poll route: mirrors handlePollRoute's shape (bounded wait, returns
+ * promptly on a real event or an empty-ish result on timeout) but waits on an in-process
  * ArtifactWatcher rather than re-reading a file. `since` is the browser's last-known version;
  * responds immediately if the watcher has already moved past it, otherwise waits up to
  * pollTimeoutMs via watch-artifact.ts's waitForChange. The browser re-issues on every response
- * (whether or not the version advanced) with `since` set to whatever version it just saw, the
- * same re-issue-on-empty-result pattern `inkloop poll` uses.
+ * with `since` set to whatever version it just saw.
  *
  * A watcher is created lazily on first request for a session hash and kept for the server
  * process's lifetime (see the `watchers` map in createInkloopServer and its close()).
  *
- * Also doubles as the per-tab presence heartbeat behind the "open in another tab" banner (issue
- * #40): when the request carries a `tab` id, it's recorded via `tabs` and the response says
- * whether some other tab has been seen recently — see tab-presence.ts for the tracking rules.
- * `tabId` is undefined for any client that predates this query param, in which case presence
- * tracking is simply skipped for that request (no banner, same as before this issue).
+ * Also doubles as the per-tab presence heartbeat behind the "open in another tab" banner: when
+ * the request carries a `tab` id, it's recorded via `tabs` and the response says whether some
+ * other tab has been seen recently — see tab-presence.ts for the tracking rules. `tabId` is
+ * undefined for any client that predates this query param, in which case presence tracking is
+ * simply skipped for that request.
  */
 async function handleReloadRoute(
   res: http.ServerResponse,
@@ -417,13 +407,10 @@ async function handleReloadRoute(
 }
 
 /**
- * Issue #65: the review shell sends a `navigator.sendBeacon` here on `pagehide` (tab closed,
- * navigated away, or reloaded) so this tab's presence clears immediately instead of lingering
- * until it ages out of the reload-poll heartbeat (up to `staleAfterMs`, currently 3x the poll
- * timeout) — during that window, whatever tab a reviewer opens next could see a stale "open in
- * another tab" banner for a tab that's already gone. A beacon is fire-and-forget by design (the
- * page is unloading, nothing can react to a response), so this always returns 204 regardless of
- * whether hash/tabId turned out to be valid — same best-effort spirit as the beacon call site.
+ * The review shell sends a `navigator.sendBeacon` here on `pagehide` (tab closed, navigated
+ * away, or reloaded) so this tab's presence clears immediately instead of lingering until it
+ * ages out of the reload-poll heartbeat. A beacon is fire-and-forget by design, so this always
+ * returns 204 regardless of whether hash/tabId turned out to be valid.
  */
 async function handleTabLeaveRoute(
   req: http.IncomingMessage,
@@ -447,11 +434,10 @@ async function handleTabLeaveRoute(
 }
 
 /**
- * User-initiated end (issue #9): the browser's "End session" button posts here. Ends the
- * session with status "user-ended", the terminal state `openOrResumeSession` refuses to reopen
- * without `--reopen` — see session-store.ts's docstring for the full reopen semantics. A poll
- * already in flight for this session picks up the change on its very next loop iteration (see
- * handlePollRoute above) rather than needing any direct signal from this route.
+ * User-initiated end: the browser's "End session" button posts here. Ends the session with
+ * status "user-ended", the terminal state `openOrResumeSession` refuses to reopen without
+ * `--reopen` — see session-store.ts. A poll already in flight picks up the change on its very
+ * next loop iteration (see handlePollRoute above).
  */
 async function handleEndRoute(res: http.ServerResponse, hash: string): Promise<void> {
   const record = await readSessionRecordByHash(hash);
@@ -469,7 +455,7 @@ async function handleEndRoute(res: http.ServerResponse, hash: string): Promise<v
 }
 
 /**
- * Backs `inkloop stop` (issue #67 follow-up): the CLI has no PID tracking for the detached
+ * Backs `inkloop stop`: the CLI has no PID tracking for the detached
  * background server (see ensure-running.ts's health-check-only discovery), so shutting it down
  * goes through HTTP like every other route rather than a signal sent to a remembered pid. Replies
  * before closing — closing synchronously here would race the response write on the same socket.
@@ -594,8 +580,8 @@ async function handleRequest(
  * review shell's round-history panel), POST /session/:hash/drift (the SDK reports text-range
  * targets whose live content fingerprint no longer matches what was captured at queue time),
  * GET /session/:hash/reload (browser-side live-reload long-poll, watches the artifact and its
- * declared sibling assets for changes, and doubles as the issue #40 tab-presence heartbeat when
- * called with ?tab=), POST /session/:hash/end (user-initiated session end, the browser's
+ * declared sibling assets for changes, and doubles as the tab-presence heartbeat when called
+ * with ?tab=), POST /session/:hash/end (user-initiated session end, the browser's
  * "End session" button), POST /shutdown (stops the whole server process, backs `inkloop stop`).
  */
 export function createInkloopServer(
@@ -612,7 +598,7 @@ export function createInkloopServer(
   const tabs = createTabPresenceTracker(config.pollTimeoutMs * 3);
 
   // Tracks each in-flight handleRequest call so close() can wait for it (see close() below).
-  // Needed because the poll route's flush-confirmed delivery (issue #115) does a little more
+  // Needed because the poll route's flush-confirmed delivery does a little more
   // work — persisting commitDeliveredFeedback — *after* the response has already gone out, which
   // Node's own server.close() has no visibility into (it only waits on socket lifetimes, and a
   // keep-alive socket can outlive the response by a lot, or the response can finish and the

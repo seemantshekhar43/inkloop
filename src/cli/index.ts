@@ -108,8 +108,8 @@ export function isMainModuleEntry(invokedPath: string, moduleRealPath: string): 
 // Compare realpaths, not raw strings: process.argv[1] stays the invoked path (a symlink for any
 // globally-linked, globally-installed, or `npx`-run bin - the CLI's only real distribution path),
 // while import.meta.url always resolves to the module's realpath. A plain string comparison
-// between the two is never true for a symlinked bin, so this guard used to silently skip run()
-// entirely - no output, no error, exit 0 - for every real invocation of `inkloop`. See issue #110.
+// between the two is never true for a symlinked bin, which would silently skip run() entirely -
+// no output, no error, exit 0 - for every real invocation of `inkloop`.
 const isMainModule =
   process.argv[1] !== undefined &&
   isMainModuleEntry(process.argv[1], fileURLToPath(import.meta.url));

@@ -14,7 +14,7 @@ export interface FeedbackTarget {
   /** Character offsets of the selection within the anchor element's textContent. */
   startOffset?: number;
   endOffset?: number;
-  /** The selected text itself, captured for drift detection (issue #10). */
+  /** The selected text itself, captured for drift detection. */
   quote?: string;
   /**
    * A short content fingerprint of the anchor element's live textContent, captured by the SDK
@@ -38,12 +38,12 @@ export interface FeedbackItem {
    * delivered this item to the agent. Undefined means still pending. See
    * shared/feedback-store.ts's claimPendingFeedback/commitDeliveredFeedback — this is what lets
    * poll return only items the agent hasn't already seen, while still keeping delivered items on
-   * disk for history (issue #21) instead of deleting them.
+   * disk for history instead of deleting them.
    */
   deliveredAt?: string;
   /**
    * ISO-8601 timestamp set server-side once a poll response has claimed this item but before
-   * that response is confirmed to have reached the client (issue #115). A claimed item is hidden
+   * that response is confirmed to have reached the client. A claimed item is hidden
    * from a subsequent poll only while claimedAt is recent (see feedback-store.ts's
    * CLAIM_VISIBILITY_MS) — if the response carrying it never actually arrives (the polling
    * process is killed, the connection drops) the claim ages out and the item becomes visible
@@ -54,10 +54,8 @@ export interface FeedbackItem {
   /**
    * Server-assigned round number: all items appended together in one POST /feedback batch (one
    * browser "Send" click) share the same round, and rounds increment session-wide. Never set by
-   * the client. This is the data-model groundwork issue #21 asks for alongside whichever of
-   * #7/#8 lands second (#8, since #7 landed first) — a future round-history UI needs a real
-   * boundary to group past annotations by, not a fabricated one. See feedback-store.ts's
-   * appendFeedback for where it's assigned.
+   * the client — the round-history UI groups past annotations by this real boundary rather than
+   * a fabricated one. See feedback-store.ts's appendFeedback for where it's assigned.
    */
   round?: number;
   /**
@@ -141,7 +139,7 @@ export function isValidFeedbackBatch(value: unknown): value is FeedbackItem[] {
 }
 
 /** Validates a POST /session/:hash/drift body: a non-empty array of feedback item ids, within
- * the size cap — the SDK's drift check (issue #10) reports every id it found mismatched in one
+ * the size cap — the SDK's drift check reports every id it found mismatched in one
  * batch per artifact load/reload rather than one request per item. */
 export function isValidDriftIdBatch(value: unknown): value is string[] {
   return (

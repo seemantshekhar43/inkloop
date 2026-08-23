@@ -4,7 +4,7 @@ import { encode } from "@toon-format/toon";
 import { encodeToonObject, encodeToonTable, type ToonRow } from "../../src/shared/toon.js";
 
 /**
- * Golden tests (issue #15): assert our hand-rolled encoder produces byte-for-byte identical
+ * Golden tests: assert our hand-rolled encoder produces byte-for-byte identical
  * output to the reference `@toon-format/toon` package (a devDependency only — see toon.ts's
  * header comment and AGENTS.md's zero-bloat policy) for the exact payload shapes `inkloop
  * poll`/`inkloop end` emit. This is what keeps the hand-rolled quoting/escaping rules honest

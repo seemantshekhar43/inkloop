@@ -14,7 +14,7 @@ const sdkSource = readFileSync(
   "utf8",
 );
 
-void test("issue #37: link clicks inside the artifact are always prevented, not just while picking", () => {
+void test("link clicks inside the artifact are always prevented, not just while picking", () => {
   // The always-on listener (added ahead of the picking-mode-gated one) must call preventDefault
   // on any click whose target is inside an <a href>, regardless of pickingElement — otherwise a
   // reviewer clicking/selecting an ordinary artifact link navigates the whole review iframe away.
@@ -22,7 +22,7 @@ void test("issue #37: link clicks inside the artifact are always prevented, not 
   assert.match(sdkSource, /event\.preventDefault\(\);/);
 });
 
-void test("issue #116: a same-document fragment link is exempted from the #37 navigation guard", () => {
+void test("a same-document fragment link is exempted from the link-navigation guard", () => {
   // isSameDocumentFragmentLink must exist and check the resolved anchor's hash/origin/pathname/
   // search against the current document, and the click guard must consult it before blocking —
   // otherwise an internal cross-reference (a table of contents, a build-order anchor) is just as
@@ -40,7 +40,7 @@ void test("issue #116: a same-document fragment link is exempted from the #37 na
   assert.match(guardBody, /isSameDocumentFragmentLink\(link\)/);
 });
 
-void test("issue #37: the link-navigation guard is registered before the element-picker click handler", () => {
+void test("the link-navigation guard is registered before the element-picker click handler", () => {
   const linkGuardIndex = sdkSource.indexOf('target.closest("a[href]")');
   assert.ok(linkGuardIndex >= 0, "expected the link-navigation guard to be present");
   // The mousemove hover-highlight handler also gates on `!pickingElement` earlier in the file —
@@ -53,7 +53,7 @@ void test("issue #37: the link-navigation guard is registered before the element
   );
 });
 
-void test("issue #41: the composer textarea auto-grows with content up to a capped max-height", () => {
+void test("the composer textarea auto-grows with content up to a capped max-height", () => {
   // `resize: none` plus the max-height/overflow pairing is what turns the textarea from a
   // fixed-size scrolling box into one that grows with content and then scrolls internally past
   // the cap, so a future edit reverting any one of these regresses the fix silently.
@@ -63,7 +63,7 @@ void test("issue #41: the composer textarea auto-grows with content up to a capp
   assert.match(sdkSource, /textarea\.addEventListener\("input",\s*autoGrowTextarea\)/);
 });
 
-void test("issue #41: the composer re-clamps its own position so growth can't push it off-screen", () => {
+void test("the composer re-clamps its own position so growth can't push it off-screen", () => {
   // autoGrowTextarea must reset height to "auto" before reading scrollHeight (so it can shrink
   // back down, not just grow) and must re-check the composer's own bounding box against
   // window.innerHeight, since it's positioned near the click point with only a static estimate.
@@ -72,7 +72,7 @@ void test("issue #41: the composer re-clamps its own position so growth can't pu
   assert.match(sdkSource, /window\.innerHeight - composer\.getBoundingClientRect\(\)\.height/);
 });
 
-void test("issue #54: picking mode is not turned off when an element is picked", () => {
+void test("picking mode is not turned off when an element is picked", () => {
   // The element-picker click handler used to call setPickingElement(false) unconditionally as
   // soon as any element was clicked, forcing a re-toggle before every additional pick. It must
   // no longer do so — only the explicit toggle message handler should call setPickingElement.
@@ -84,7 +84,7 @@ void test("issue #54: picking mode is not turned off when an element is picked",
   assert.doesNotMatch(clickHandlerBody, /setPickingElement\(false\)/);
 });
 
-void test("issue #117: inkloop:set-picking sets picking mode to an explicit value rather than toggling it", () => {
+void test("inkloop:set-picking sets picking mode to an explicit value rather than toggling it", () => {
   // A plain re-send of the toggle message (inkloop:toggle-element-picker) would flip picking mode
   // relative to whatever it currently is — fine for a user click, wrong for the shell resyncing a
   // freshly-reloaded iframe, where it needs to force a known value instead. This message must call
@@ -97,7 +97,7 @@ void test("issue #117: inkloop:set-picking sets picking mode to an explicit valu
   assert.doesNotMatch(caseBody, /setPickingElement\(!pickingElement\)/);
 });
 
-void test("issue #62: hover-highlight and click-pick exclude <body>/<html> so the highlight clears over empty space", () => {
+void test("hover-highlight and click-pick exclude <body>/<html> so the highlight clears over empty space", () => {
   // isUnpickable() must exist and treat document.body/document.documentElement as unpickable, and
   // both the mousemove hover-highlight handler and the click-to-pick handler must gate on it —
   // otherwise the cursor moving into empty space (below the artifact's real content, in the
@@ -114,14 +114,14 @@ void test("issue #62: hover-highlight and click-pick exclude <body>/<html> so th
   );
 });
 
-void test("issue #64: the composer popup is widened to 392px and its position clamp keeps it on-screen", () => {
-  // Widened ~1.4x (280px -> 392px, issue #64); the horizontal position clamp uses innerWidth-408
+void test("the composer popup is widened to 392px and its position clamp keeps it on-screen", () => {
+  // Widened ~1.4x (280px -> 392px); the horizontal position clamp uses innerWidth-408
   // to keep the wider popup's right edge from ever running off-screen (392px width + 16px margin).
   assert.match(sdkSource, /max-width:\s*392px/);
   assert.match(sdkSource, /window\.innerWidth - 408/);
 });
 
-void test("issue #54: hover-highlight and re-picking are suspended while the composer is open", () => {
+void test("hover-highlight and re-picking are suspended while the composer is open", () => {
   // Both the mousemove hover-highlight and the click-to-pick handler must skip while a prior
   // pick's composer is still open (pendingTarget set), otherwise picking mode staying on would
   // let the mouse drag the pinned highlight around or let a stray click re-pick underneath the
@@ -132,7 +132,7 @@ void test("issue #54: hover-highlight and re-picking are suspended while the com
   assert.ok(guardOccurrences && guardOccurrences.length >= 2);
 });
 
-void test("issue #42 follow-up: the pick cursor is a custom comment-bubble glyph, not the OS crosshair, with a crosshair fallback", () => {
+void test("the pick cursor is a custom comment-bubble glyph, not the OS crosshair, with a crosshair fallback", () => {
   assert.match(sdkSource, /const PICK_CURSOR_SVG =/);
   // Falls back to "crosshair" (not e.g. "auto") for browsers that reject the custom cursor image.
   assert.match(sdkSource, /const PICK_CURSOR = `url\("data:image\/svg\+xml,[^`]+"\) \d+ \d+, crosshair`;/);
@@ -141,9 +141,9 @@ void test("issue #42 follow-up: the pick cursor is a custom comment-bubble glyph
 
 void test("review: the pick cursor's hotspot lands on the tip of the bubble's tail, not the bubble body", () => {
   // The SVG path's tail tip is the "M4 3.5 L4 15 L8.2 15 L11 19 L11 15 ..." vertex at (11, 19) -
-  // the same "this corner is where the click lands" convention comment-cursor patterns elsewhere
-  // (Figma, Notion) use. The cursor's own hotspot offset (the two numbers before ", crosshair")
-  // must match that vertex, not some other point on the glyph (e.g. its top-left origin).
+  // the same "this corner is where the click lands" convention other comment-cursor patterns
+  // use. The cursor's own hotspot offset (the two numbers before ", crosshair") must match that
+  // vertex, not some other point on the glyph (e.g. its top-left origin).
   const svgMatch = sdkSource.match(/const PICK_CURSOR_SVG =([\s\S]*?);\s*\n\s*const PICK_CURSOR/);
   assert.ok(svgMatch, "expected to find the PICK_CURSOR_SVG declaration");
   const [, svgBody] = svgMatch;
@@ -172,7 +172,7 @@ void test("send-error echoes the SDK's own current queue back to the shell", () 
   assert.match(messageBody, /items:\s*queue/);
 });
 
-void test("issue #73: suggestions never trigger a network call, agent-embedded or heuristic", () => {
+void test("suggestions never trigger a network call, agent-embedded or heuristic", () => {
   // The deliberate decision from the issue's open question: no inkloop-side LLM call for this,
   // in either tier - not the agent-embedded read, not the DOM-heuristic fallback.
   assert.match(sdkSource, /function computeSuggestions/);
@@ -186,7 +186,7 @@ void test("issue #73: suggestions never trigger a network call, agent-embedded o
   }
 });
 
-void test("issue #73: agent-embedded suggestions (read from the artifact's own DOM) take priority over the heuristic fallback", () => {
+void test("agent-embedded suggestions (read from the artifact's own DOM) take priority over the heuristic fallback", () => {
   // Matches the AGENTS.md-documented convention: a <script type="application/json"
   // id="inkloop-suggestions"> tag any artifact can include on its own, inert to a browser that
   // doesn't know to look for it - same "no inkloop support needed" pattern as the Mermaid example.
@@ -198,7 +198,7 @@ void test("issue #73: agent-embedded suggestions (read from the artifact's own D
   );
 });
 
-void test("issue #73: embedded suggestions are validated and capped before use", () => {
+void test("embedded suggestions are validated and capped before use", () => {
   const fnStart = sdkSource.indexOf("function readEmbeddedSuggestions");
   const fnEnd = sdkSource.indexOf("\n  }", fnStart);
   const fnBody = sdkSource.slice(fnStart, fnEnd);
@@ -209,7 +209,7 @@ void test("issue #73: embedded suggestions are validated and capped before use",
   assert.match(fnBody, /slice\(0, MAX_SUGGESTIONS\)/);
 });
 
-void test("issue #73: suggestions are posted to the parent before inkloop:ready", () => {
+void test("suggestions are posted to the parent before inkloop:ready", () => {
   const suggestionsIndex = sdkSource.indexOf('type: "inkloop:suggestions"');
   const readyIndex = sdkSource.indexOf('type: "inkloop:ready"');
   assert.ok(suggestionsIndex >= 0, "expected an inkloop:suggestions message");
@@ -221,7 +221,7 @@ void test("issue #73: suggestions are posted to the parent before inkloop:ready"
   assert.match(sdkSource, /prompts:\s*computeSuggestions\(\)/);
 });
 
-void test("issue #73: the heuristic fallback looks for headings, missing alt text, forms, and long paragraphs", () => {
+void test("the heuristic fallback looks for headings, missing alt text, forms, and long paragraphs", () => {
   const fnStart = sdkSource.indexOf("function computeHeuristicSuggestions");
   const fnEnd = sdkSource.indexOf("\n  }", fnStart);
   const fnBody = sdkSource.slice(fnStart, fnEnd);
@@ -234,7 +234,7 @@ void test("issue #73: the heuristic fallback looks for headings, missing alt tex
   assert.match(fnBody, /suggestions\.slice\(0, MAX_SUGGESTIONS\)/);
 });
 
-void test("issue #80: the text-range picker's mouseup listener requires Sidenote (pickingElement) to be active", () => {
+void test("the text-range picker's mouseup listener requires Sidenote (pickingElement) to be active", () => {
   // Previously this listener only checked whether the current selection was non-collapsed and
   // non-empty, so a native double/triple-click word selection opened the comment composer even
   // with Sidenote off. It must gate on the same picking state the element-picker click handler
@@ -254,7 +254,7 @@ void test("issue #80: the text-range picker's mouseup listener requires Sidenote
   );
 });
 
-void test("issue #114: window.inkloop.addNote exposes a public hook for artifact-authored JS to queue a general note", () => {
+void test("window.inkloop.addNote exposes a public hook for artifact-authored JS to queue a general note", () => {
   // Must exist as a real public entry point on window (distinct from the internal queueItem it
   // wraps) so an artifact's own script - a decision-collection row's "send changes" handler - can
   // call it directly, without reaching into the SDK's closured internals.
@@ -267,7 +267,7 @@ void test("issue #114: window.inkloop.addNote exposes a public hook for artifact
   assert.match(body, /queueItem\(\{\s*kind:\s*"general"\s*\},\s*comment\)/);
 });
 
-void test("issue #114: window.inkloop is only assigned after the standalone-load guard, not unconditionally", () => {
+void test("window.inkloop is only assigned after the standalone-load guard, not unconditionally", () => {
   // window.inkloop must never exist when the artifact is opened directly outside a review session
   // (the standalone-render invariant) - it has to sit after the `window === window.parent` early
   // return the same way every other queue-mutating hook in this file already does.

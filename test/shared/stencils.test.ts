@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DESIGN_BASELINE, getStencil, listStencils } from "../../src/shared/stencils.js";
 
-void test("listStencils returns the full stencil set with the ids named in issue #86", () => {
+void test("listStencils returns the full stencil set", () => {
   const ids = listStencils().map((s) => s.id);
   assert.deepEqual(ids, [
     "plan",
@@ -35,7 +35,7 @@ void test("getStencil returns undefined for an unknown id", () => {
   assert.equal(getStencil("nonexistent"), undefined);
 });
 
-void test("the code stencil covers per-line anchors and non-color-only diff signaling (issue #101)", () => {
+void test("the code stencil covers per-line anchors and non-color-only diff signaling", () => {
   const stencil = getStencil("code");
   assert.equal(stencil?.title, "Code");
   assert.ok(
@@ -48,7 +48,7 @@ void test("the code stencil covers per-line anchors and non-color-only diff sign
   );
 });
 
-void test("loopable's rules ship a baseline visual-design expectation (issue #89)", () => {
+void test("loopable's rules ship a baseline visual-design expectation", () => {
   const stencil = getStencil("loopable");
   assert.ok(
     stencil?.rules.some(
@@ -58,7 +58,7 @@ void test("loopable's rules ship a baseline visual-design expectation (issue #89
   );
 });
 
-void test("DESIGN_BASELINE has all non-empty sections (issue #89)", () => {
+void test("DESIGN_BASELINE has all non-empty sections", () => {
   assert.ok(DESIGN_BASELINE.summary.length > 0);
   assert.ok(DESIGN_BASELINE.priority.length > 0);
   assert.ok(DESIGN_BASELINE.font_stack.length > 0);
@@ -67,14 +67,14 @@ void test("DESIGN_BASELINE has all non-empty sections (issue #89)", () => {
   assert.ok(DESIGN_BASELINE.components.length > 0);
 });
 
-void test("DESIGN_BASELINE's priority prompts stating which tier was used (issue #102)", () => {
+void test("DESIGN_BASELINE's priority prompts stating which tier was used", () => {
   assert.ok(
     DESIGN_BASELINE.priority.some((p) => /state which/i.test(p) && /tier/i.test(p)),
     "priority should ask the agent to state which tier it used and why when delivering the artifact",
   );
 });
 
-void test("DESIGN_BASELINE's tier disclosure clarifies it belongs in the delivery message, not the artifact page (issue #120)", () => {
+void test("DESIGN_BASELINE's tier disclosure clarifies it belongs in the delivery message, not the artifact page", () => {
   assert.ok(
     DESIGN_BASELINE.priority.some(
       (p) => /delivery message/i.test(p) && /not as visible content/i.test(p),
@@ -83,21 +83,21 @@ void test("DESIGN_BASELINE's tier disclosure clarifies it belongs in the deliver
   );
 });
 
-void test("DESIGN_BASELINE names a component-library fallback and subject-fit note (issue #90)", () => {
+void test("DESIGN_BASELINE names a component-library fallback and subject-fit note", () => {
   assert.ok(
     DESIGN_BASELINE.priority.some((p) => /CDN/.test(p) && /fit/i.test(p)),
     "priority should offer a CDN component-library option and warn against a mismatched default theme",
   );
 });
 
-void test("DESIGN_BASELINE's tier 1 tells the agent to check for a project design.md/guideline file (issue #103)", () => {
+void test("DESIGN_BASELINE's tier 1 tells the agent to check for a project design.md/guideline file", () => {
   assert.ok(
     DESIGN_BASELINE.priority.some((p) => /design\.md/i.test(p) && /check/i.test(p)),
     "tier 1 should tell the agent to check for a project design.md/DESIGN.md/style guide before assuming none was given",
   );
 });
 
-void test("DESIGN_BASELINE's CDN tier names a concrete pinned default (issue #103)", () => {
+void test("DESIGN_BASELINE's CDN tier names a concrete pinned default", () => {
   const cdnTier = DESIGN_BASELINE.priority.find((p) => /CDN-loaded/.test(p));
   assert.ok(cdnTier, "expected a CDN-tier priority entry");
   assert.match(cdnTier ?? "", /daisyui@5\.5\.19/);
@@ -105,31 +105,31 @@ void test("DESIGN_BASELINE's CDN tier names a concrete pinned default (issue #10
   assert.match(cdnTier ?? "", /data-theme/);
 });
 
-void test("DESIGN_BASELINE's components ship a concrete example per rule (issue #90)", () => {
+void test("DESIGN_BASELINE's components ship a concrete example per rule", () => {
   for (const component of DESIGN_BASELINE.components) {
     assert.match(component, /Example:/, component);
   }
 });
 
-void test("DESIGN_BASELINE's Tables component references overflow-x safety directly (issue #90)", () => {
+void test("DESIGN_BASELINE's Tables component references overflow-x safety directly", () => {
   const tables = DESIGN_BASELINE.components.find((c) => c.startsWith("Tables:"));
   assert.ok(tables, "expected a Tables component entry");
   assert.match(tables ?? "", /overflow-x/);
 });
 
-void test("DESIGN_BASELINE ships a mockup device-frame component (issue #99)", () => {
+void test("DESIGN_BASELINE ships a mockup device-frame component", () => {
   const mockupFrame = DESIGN_BASELINE.components.find((c) => c.startsWith("Mockup device frame"));
   assert.ok(mockupFrame, "expected a Mockup device frame component entry");
   assert.match(mockupFrame ?? "", /mockup-browser/);
 });
 
-void test("DESIGN_BASELINE ships a dated timeline pattern distinct from the numbered step pattern (issue #99)", () => {
+void test("DESIGN_BASELINE ships a dated timeline pattern distinct from the numbered step pattern", () => {
   const timeline = DESIGN_BASELINE.patterns.find((p) => p.startsWith("Timeline"));
   assert.ok(timeline, "expected a Timeline pattern entry");
   assert.match(timeline ?? "", /\.timeline time/);
 });
 
-void test("DESIGN_BASELINE's theming ships a concrete token-based dark-mode mechanism (issue #98)", () => {
+void test("DESIGN_BASELINE's theming ships a concrete token-based dark-mode mechanism", () => {
   const theming = DESIGN_BASELINE.theming;
   assert.match(theming, /:root/);
   assert.match(theming, /@media \(prefers-color-scheme: dark\)/);
@@ -139,20 +139,20 @@ void test("DESIGN_BASELINE's theming ships a concrete token-based dark-mode mech
   assert.match(theming, /--accent/);
 });
 
-void test("DESIGN_BASELINE has all non-empty issue #90 sections", () => {
+void test("DESIGN_BASELINE has all non-empty extended sections", () => {
   assert.ok(DESIGN_BASELINE.patterns.length > 0);
   assert.ok(DESIGN_BASELINE.responsive.length > 0);
   assert.ok(DESIGN_BASELINE.theming.length > 0);
   assert.ok(DESIGN_BASELINE.layout_safety.length > 0);
 });
 
-void test("DESIGN_BASELINE's patterns name a Mermaid diagram as an option for any stencil, not just `diagram` (issue #118)", () => {
+void test("DESIGN_BASELINE's patterns name a Mermaid diagram as an option for any stencil, not just `diagram`", () => {
   const diagramCrossRef = DESIGN_BASELINE.patterns.find((p) => /Mermaid/i.test(p));
   assert.ok(diagramCrossRef, "expected a pattern entry naming Mermaid as a cross-stencil option");
   assert.match(diagramCrossRef ?? "", /`diagram` stencil/);
 });
 
-void test("comparison/report/plan stencils each cross-reference the diagram stencil for structure/flow content (issue #118)", () => {
+void test("comparison/report/plan stencils each cross-reference the diagram stencil for structure/flow content", () => {
   for (const id of ["plan", "comparison", "report"] as const) {
     const stencil = getStencil(id);
     assert.ok(
@@ -162,7 +162,7 @@ void test("comparison/report/plan stencils each cross-reference the diagram sten
   }
 });
 
-void test("DESIGN_BASELINE ships a mockup internal-scroll-region pattern distinct from the outer device frame (issue #119)", () => {
+void test("DESIGN_BASELINE ships a mockup internal-scroll-region pattern distinct from the outer device frame", () => {
   const scrollRegion = DESIGN_BASELINE.components.find((c) =>
     c.startsWith("Mockup internal scroll region"),
   );
@@ -172,7 +172,7 @@ void test("DESIGN_BASELINE ships a mockup internal-scroll-region pattern distinc
   assert.match(scrollRegion ?? "", /-webkit-overflow-scrolling: touch/);
 });
 
-void test("DESIGN_BASELINE's patterns name a reusable open-questions/undecided-items section for any stencil (issue #114)", () => {
+void test("DESIGN_BASELINE's patterns name a reusable open-questions/undecided-items section for any stencil", () => {
   const openQuestions = DESIGN_BASELINE.patterns.find((p) => p.startsWith("Open questions"));
   assert.ok(openQuestions, "expected an open-questions/undecided-items pattern entry");
   assert.match(openQuestions ?? "", /`plan`/);
@@ -180,17 +180,17 @@ void test("DESIGN_BASELINE's patterns name a reusable open-questions/undecided-i
   assert.match(openQuestions ?? "", /`comparison`/);
 });
 
-void test("plan/report/comparison stencils each point at the shared open-questions pattern (issue #114)", () => {
+void test("plan/report/comparison stencils each point at the shared open-questions pattern", () => {
   for (const id of ["plan", "report", "comparison"] as const) {
     const stencil = getStencil(id);
     assert.ok(
-      stencil?.rules.some((r) => /open.questions/i.test(r) && /issue #114/.test(r)),
+      stencil?.rules.some((r) => /open.questions/i.test(r) && /design_baseline/i.test(r)),
       `${id} rules should reference design_baseline's open-questions pattern`,
     );
   }
 });
 
-void test("DESIGN_BASELINE ships a decision-collection-row pattern that batches structured input into one note (issue #114)", () => {
+void test("DESIGN_BASELINE ships a decision-collection-row pattern that batches structured input into one note", () => {
   const decisionRow = DESIGN_BASELINE.patterns.find((p) => p.startsWith("Decision-collection row"));
   assert.ok(decisionRow, "expected a Decision-collection row pattern entry");
   assert.match(decisionRow ?? "", /window\.inkloop\.addNote/);

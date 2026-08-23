@@ -42,7 +42,7 @@ function requestJson(
 }
 
 /**
- * Implements `inkloop stop` (issue #67 follow-up): shuts down the shared background server
+ * Implements `inkloop stop`: shuts down the shared background server
  * (the same one `ensure-running.ts` spawns detached on first `inkloop <file>`/`poll`/`end`), not
  * any single review session — a session stays ended-or-not per its own session.json regardless of
  * whether the server process is up. Deliberately does not call `ensureServerRunning`: spawning a

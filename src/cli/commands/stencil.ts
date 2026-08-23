@@ -1,15 +1,13 @@
 import { DESIGN_BASELINE, getStencil, listStencils } from "../../shared/stencils.js";
 
 /**
- * Implements `inkloop stencil` / `inkloop stencil <id>` (issue #86, follow-up to #68): static,
+ * Implements `inkloop stencil` / `inkloop stencil <id>`: static,
  * built-in content-guidance for authoring inkloop artifacts well. Not a review-loop mechanic -
  * no server/session involvement, purely reads from shared/stencils.ts's data.
  *
  * Output is plain text (not JSON): this command's payload is prose meant to be read/absorbed as
  * guidance rather than parsed as structured status, unlike poll/end's stdout-is-structured-output
- * convention. The exact shape is deliberately left simple for now - issue #86's sequencing note
- * flags that the final agent-facing output format should be decided together with #15
- * (token-optimized agent-facing output), not locked in here.
+ * convention.
  */
 export function runStencilCommand(id?: string): number {
   if (id === undefined) {
@@ -21,7 +19,7 @@ export function runStencilCommand(id?: string): number {
       "",
       "Run `inkloop stencil <id>` to expand one - every id's output also includes `design_baseline`,",
       "the visual-design floor to fall back on when there's no user-specified or subject-matched",
-      "design system to follow (issue #89).",
+      "design system to follow.",
     );
     process.stdout.write(`${lines.join("\n")}\n`);
     return 0;
@@ -55,7 +53,7 @@ export function runStencilCommand(id?: string): number {
     ...stencil.loop_notes.map((n) => `- ${n}`),
     "",
     "## design_baseline",
-    "(the visual-design floor - issue #89; use only when there's no user-specified or subject-matched design system to follow instead, see its own priority order below)",
+    "(the visual-design floor; use only when there's no user-specified or subject-matched design system to follow instead, see its own priority order below)",
     DESIGN_BASELINE.summary,
     "",
     "priority:",

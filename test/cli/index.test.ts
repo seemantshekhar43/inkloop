@@ -17,7 +17,7 @@ void test("isMainModuleEntry: true when invoked directly by its own real path", 
   assert.equal(isMainModuleEntry(real, real), true);
 });
 
-void test("isMainModuleEntry: true when invoked via a symlink to the real path (issue #110)", () => {
+void test("isMainModuleEntry: true when invoked via a symlink to the real path", () => {
   const real = join(dir, "index.js");
   const link = join(dir, "inkloop");
   writeFileSync(real, "");

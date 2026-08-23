@@ -5,10 +5,9 @@ import { defaultStateRoot, sessionDirByHash } from "./session-store.js";
 import { readFeedback } from "./feedback-store.js";
 
 /**
- * A short summary an agent posts (via `inkloop poll --agent-reply`, issue #7) before polling
- * again, describing what it changed in response to the previous feedback batch. Persisted so a
- * future round-history UI (issue #21) has real "agent revised" entries to render instead of
- * needing to fabricate them.
+ * A short summary an agent posts (via `inkloop poll --agent-reply`) before polling again,
+ * describing what it changed in response to the previous feedback batch. Persisted so the
+ * round-history UI has real "agent revised" entries to render.
  */
 export interface AgentReply {
   id: string;

@@ -1,16 +1,14 @@
 /**
  * Tracks which browser tabs are actively polling a given session, so the review shell can show a
- * "this session may be open in another tab" banner (issue #40) without any lock/take-over
- * mechanic — the fix direction there is explicitly a visible signal, not enforced ownership.
+ * "this session may be open in another tab" banner — a visible signal, not enforced ownership.
  *
- * Piggybacks on the reload long-poll (issue #8): review-shell.ts already re-issues that request
+ * Piggybacks on the reload long-poll: review-shell.ts already re-issues that request
  * continuously for as long as a tab is open, so it doubles as a per-tab heartbeat with no new
- * request loop needed. Each tab generates a random id once (sessionStorage-backed, so it survives
- * the shell's own live-reload-driven iframe swaps but not a full page reload) and sends it as a
- * query param on every reload request.
+ * request loop needed. Each tab generates a random id once (sessionStorage-backed) and sends it
+ * as a query param on every reload request.
  *
  * State is in-memory only, scoped to one server process's lifetime — the same tradeoff watchers
- * (watch-artifact.ts) already makes for this single-process, loopback-only server.
+ * (watch-artifact.ts) already make for this single-process, loopback-only server.
  */
 export interface TabPresenceTracker {
   /**
@@ -23,11 +21,9 @@ export interface TabPresenceTracker {
 
   /**
    * Drops `tabId` immediately rather than waiting up to `staleAfterMs` for it to age out.
-   * Called from a `pagehide` beacon (issue #65) so closing or navigating away from a tab clears
-   * its presence right away — without this, a tab a reviewer just closed could still make the
-   * "open in another tab" banner show up for up to `staleAfterMs` in whatever tab they open next,
-   * a false positive by the time anyone sees it. Best-effort like the beacon that calls it: a
-   * missed release just falls back to the existing staleness pruning in `record`.
+   * Called from a `pagehide` beacon so closing or navigating away from a tab clears its presence
+   * right away, avoiding a false-positive banner in whatever tab opens next. Best-effort like the
+   * beacon that calls it: a missed release just falls back to the staleness pruning in `record`.
    */
   release(hash: string, tabId: string): void;
 }

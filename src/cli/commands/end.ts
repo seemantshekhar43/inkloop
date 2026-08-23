@@ -7,10 +7,10 @@ export interface EndCommandOptions {
 }
 
 /**
- * Implements `inkloop end <file>` (issue #9): agent-initiated session end. Ends with status
+ * Implements `inkloop end <file>`: agent-initiated session end. Ends with status
  * "agent-ended" — the one lifecycle state a later plain `inkloop <file>` may reopen freely
  * without `--reopen` (see session-store.ts's openOrResumeSession for the contrast with a
- * user-ended session). Prints a small TOON payload to stdout (issue #15), mirroring `inkloop
+ * user-ended session). Prints a small TOON payload to stdout, mirroring `inkloop
  * poll`'s stdout-is-structured-output convention, so an agent parsing the result gets the same
  * next_step guidance the poll route's "ended" response carries.
  */
