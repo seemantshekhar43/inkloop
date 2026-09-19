@@ -1,0 +1,307 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+// The SDK (src/sdk/index.ts) is a self-contained, zero-import browser IIFE that references
+// `window`/`document`/`crypto` at module load time (see its own top-of-file comment) — it can't
+// be `import`ed under Node's test runner without a DOM. Matching review-shell.test.ts's existing
+// convention of asserting against generated source text rather than executing it, these tests
+// read the compiled output and check for the specific guard each issue depends on, so a future
+// edit that accidentally drops the guard fails a test instead of only showing up manually.
+const sdkSource = readFileSync(
+  fileURLToPath(new URL("../../dist/sdk/index.js", import.meta.url)),
+  "utf8",
+);
+
+void test("link clicks inside the artifact are always prevented, not just while picking", () => {
+  // The always-on listener (added ahead of the picking-mode-gated one) must call preventDefault
+  // on any click whose target is inside an <a href>, regardless of pickingElement — otherwise a
+  // reviewer clicking/selecting an ordinary artifact link navigates the whole review iframe away.
+  assert.match(sdkSource, /target\.closest\("a\[href\]"\)/);
+  assert.match(sdkSource, /event\.preventDefault\(\);/);
+});
+
+void test("a same-document fragment link is exempted from the link-navigation guard", () => {
+  // isSameDocumentFragmentLink must exist and check the resolved anchor's hash/origin/pathname/
+  // search against the current document, and the click guard must consult it before blocking —
+  // otherwise an internal cross-reference (a table of contents, a build-order anchor) is just as
+  // dead as an actual off-page navigation.
+  assert.match(sdkSource, /function isSameDocumentFragmentLink\(link\)/);
+  assert.match(sdkSource, /link\.hash !== ""/);
+  assert.match(sdkSource, /link\.origin === window\.location\.origin/);
+  assert.match(sdkSource, /link\.pathname === window\.location\.pathname/);
+  assert.match(sdkSource, /link\.search === window\.location\.search/);
+
+  const guardIndex = sdkSource.indexOf('target.closest("a[href]")');
+  assert.ok(guardIndex >= 0, "expected the link-navigation guard to be present");
+  const preventDefaultIndex = sdkSource.indexOf("event.preventDefault();", guardIndex);
+  const guardBody = sdkSource.slice(guardIndex, preventDefaultIndex);
+  assert.match(guardBody, /isSameDocumentFragmentLink\(link\)/);
+});
+
+void test("the link-navigation guard is registered before the element-picker click handler", () => {
+  const linkGuardIndex = sdkSource.indexOf('target.closest("a[href]")');
+  assert.ok(linkGuardIndex >= 0, "expected the link-navigation guard to be present");
+  // The mousemove hover-highlight handler also gates on `!pickingElement` earlier in the file —
+  // search from the link guard onward so this only finds the *click* handler's own gate.
+  const pickerHandlerIndex = sdkSource.indexOf("!pickingElement", linkGuardIndex);
+  assert.ok(pickerHandlerIndex >= 0, "expected the element-picker click handler to be present");
+  assert.ok(
+    linkGuardIndex < pickerHandlerIndex,
+    "link-navigation guard must run before the picker handler so both listeners see the click",
+  );
+});
+
+void test("the composer textarea auto-grows with content up to a capped max-height", () => {
+  // `resize: none` plus the max-height/overflow pairing is what turns the textarea from a
+  // fixed-size scrolling box into one that grows with content and then scrolls internally past
+  // the cap, so a future edit reverting any one of these regresses the fix silently.
+  assert.match(sdkSource, /max-height:\s*200px/);
+  assert.match(sdkSource, /overflow-y:\s*auto/);
+  assert.match(sdkSource, /resize:\s*none/);
+  assert.match(sdkSource, /textarea\.addEventListener\("input",\s*autoGrowTextarea\)/);
+});
+
+void test("the composer re-clamps its own position so growth can't push it off-screen", () => {
+  // autoGrowTextarea must reset height to "auto" before reading scrollHeight (so it can shrink
+  // back down, not just grow) and must re-check the composer's own bounding box against
+  // window.innerHeight, since it's positioned near the click point with only a static estimate.
+  assert.match(sdkSource, /textarea\.style\.height = "auto"/);
+  assert.match(sdkSource, /textarea\.style\.height = `\$\{textarea\.scrollHeight\}px`/);
+  assert.match(sdkSource, /window\.innerHeight - composer\.getBoundingClientRect\(\)\.height/);
+});
+
+void test("picking mode is not turned off when an element is picked", () => {
+  // The element-picker click handler used to call setPickingElement(false) unconditionally as
+  // soon as any element was clicked, forcing a re-toggle before every additional pick. It must
+  // no longer do so — only the explicit toggle message handler should call setPickingElement.
+  const guardPattern = /if \(!pickingElement \|\| pendingTarget\)\s*\n?\s*return;/;
+  const clickHandlerStart = sdkSource.search(guardPattern);
+  assert.ok(clickHandlerStart >= 0, "expected the picker click handler's combined guard");
+  const clickHandlerEnd = sdkSource.indexOf("showComposerAt(", clickHandlerStart);
+  const clickHandlerBody = sdkSource.slice(clickHandlerStart, clickHandlerEnd);
+  assert.doesNotMatch(clickHandlerBody, /setPickingElement\(false\)/);
+});
+
+void test("inkloop:set-picking sets picking mode to an explicit value rather than toggling it", () => {
+  // A plain re-send of the toggle message (inkloop:toggle-element-picker) would flip picking mode
+  // relative to whatever it currently is — fine for a user click, wrong for the shell resyncing a
+  // freshly-reloaded iframe, where it needs to force a known value instead. This message must call
+  // setPickingElement with data.active directly, not flip pickingElement.
+  const caseIndex = sdkSource.indexOf('case "inkloop:set-picking"');
+  assert.ok(caseIndex >= 0, "expected an inkloop:set-picking case in the message handler");
+  const nextCaseIndex = sdkSource.indexOf("case ", caseIndex + 1);
+  const caseBody = sdkSource.slice(caseIndex, nextCaseIndex >= 0 ? nextCaseIndex : undefined);
+  assert.match(caseBody, /setPickingElement\(data\.active\)/);
+  assert.doesNotMatch(caseBody, /setPickingElement\(!pickingElement\)/);
+});
+
+void test("hover-highlight and click-pick exclude <body>/<html> so the highlight clears over empty space", () => {
+  // isUnpickable() must exist and treat document.body/document.documentElement as unpickable, and
+  // both the mousemove hover-highlight handler and the click-to-pick handler must gate on it —
+  // otherwise the cursor moving into empty space (below the artifact's real content, in the
+  // wrapper's padding, etc.) leaves the highlight pinned to the page's outer wrapper instead of
+  // clearing.
+  assert.match(
+    sdkSource,
+    /function isUnpickable\(el\) \{\s*\n?\s*return el === document\.body \|\| el === document\.documentElement;/,
+  );
+  const guardOccurrences = sdkSource.match(/isSdkNode\(target\) \|\| isUnpickable\(target\)/g);
+  assert.ok(
+    guardOccurrences && guardOccurrences.length >= 2,
+    "expected isUnpickable to gate both the mousemove and click handlers",
+  );
+});
+
+void test("the composer popup is widened to 392px and its position clamp keeps it on-screen", () => {
+  // Widened ~1.4x (280px -> 392px); the horizontal position clamp uses innerWidth-408
+  // to keep the wider popup's right edge from ever running off-screen (392px width + 16px margin).
+  assert.match(sdkSource, /max-width:\s*392px/);
+  assert.match(sdkSource, /window\.innerWidth - 408/);
+});
+
+void test("hover-highlight and re-picking are suspended while the composer is open", () => {
+  // Both the mousemove hover-highlight and the click-to-pick handler must skip while a prior
+  // pick's composer is still open (pendingTarget set), otherwise picking mode staying on would
+  // let the mouse drag the pinned highlight around or let a stray click re-pick underneath the
+  // open composer.
+  const guardOccurrences = sdkSource.match(
+    /if \(!pickingElement \|\| pendingTarget\)\s*\n?\s*return;/g,
+  );
+  assert.ok(guardOccurrences && guardOccurrences.length >= 2);
+});
+
+void test("the pick cursor is a custom comment-bubble glyph, not the OS crosshair, with a crosshair fallback", () => {
+  assert.match(sdkSource, /const PICK_CURSOR_SVG =/);
+  // Falls back to "crosshair" (not e.g. "auto") for browsers that reject the custom cursor image.
+  assert.match(sdkSource, /const PICK_CURSOR = `url\("data:image\/svg\+xml,[^`]+"\) \d+ \d+, crosshair`;/);
+  assert.match(sdkSource, /document\.documentElement\.style\.cursor = value \? PICK_CURSOR : "";/);
+});
+
+void test("review: the pick cursor's hotspot lands on the tip of the bubble's tail, not the bubble body", () => {
+  // The SVG path's tail tip is the "M4 3.5 L4 15 L8.2 15 L11 19 L11 15 ..." vertex at (11, 19) -
+  // the same "this corner is where the click lands" convention other comment-cursor patterns
+  // use. The cursor's own hotspot offset (the two numbers before ", crosshair") must match that
+  // vertex, not some other point on the glyph (e.g. its top-left origin).
+  const svgMatch = sdkSource.match(/const PICK_CURSOR_SVG =([\s\S]*?);\s*\n\s*const PICK_CURSOR/);
+  assert.ok(svgMatch, "expected to find the PICK_CURSOR_SVG declaration");
+  const [, svgBody] = svgMatch;
+  assert.ok(svgBody, "expected a captured PICK_CURSOR_SVG body");
+  const tailTipMatch = svgBody.match(/L(\d+(?:\.\d+)?) (\d+(?:\.\d+)?) L\1 \d/);
+  assert.ok(tailTipMatch, "expected to find the tail-tip vertex in the SVG path data");
+  const [, tailTipX, tailTipY] = tailTipMatch;
+
+  const hotspotMatch = sdkSource.match(/PICK_CURSOR_SVG\)}"\) (\d+) (\d+), crosshair`;/);
+  assert.ok(hotspotMatch, "expected to find the cursor hotspot offset");
+  const [, hotspotX, hotspotY] = hotspotMatch;
+
+  assert.equal(hotspotX, tailTipX, "cursor hotspot x should match the bubble tail tip");
+  assert.equal(hotspotY, tailTipY, "cursor hotspot y should match the bubble tail tip");
+});
+
+void test("send-error echoes the SDK's own current queue back to the shell", () => {
+  // The shell's optimistic-send rollback restores `items` from this message, not from its own
+  // pre-fold snapshot - so a POST /feedback failure must hand back the queue's true state
+  // (including any note folded in via 'inkloop:add-comment' just before the failed send)
+  // instead of leaving the shell to guess from state that predates the fold-in.
+  const sendErrorIndex = sdkSource.indexOf('type: "inkloop:send-error"');
+  assert.ok(sendErrorIndex >= 0);
+  const messageEnd = sdkSource.indexOf('});', sendErrorIndex);
+  const messageBody = sdkSource.slice(sendErrorIndex, messageEnd);
+  assert.match(messageBody, /items:\s*queue/);
+});
+
+void test("suggestions never trigger a network call, agent-embedded or heuristic", () => {
+  // The deliberate decision from the issue's open question: no inkloop-side LLM call for this,
+  // in either tier - not the agent-embedded read, not the DOM-heuristic fallback.
+  assert.match(sdkSource, /function computeSuggestions/);
+  assert.match(sdkSource, /function readEmbeddedSuggestions/);
+  assert.match(sdkSource, /function computeHeuristicSuggestions/);
+  for (const fnName of ["computeSuggestions", "readEmbeddedSuggestions", "computeHeuristicSuggestions"]) {
+    const fnStart = sdkSource.indexOf(`function ${fnName}`);
+    const fnEnd = sdkSource.indexOf("\n  }", fnStart);
+    const fnBody = sdkSource.slice(fnStart, fnEnd);
+    assert.doesNotMatch(fnBody, /fetch\(/, `expected ${fnName} not to call fetch()`);
+  }
+});
+
+void test("agent-embedded suggestions (read from the artifact's own DOM) take priority over the heuristic fallback", () => {
+  // Matches the AGENTS.md-documented convention: a <script type="application/json"
+  // id="inkloop-suggestions"> tag any artifact can include on its own, inert to a browser that
+  // doesn't know to look for it - same "no inkloop support needed" pattern as the Mermaid example.
+  assert.match(sdkSource, /document\.getElementById\("inkloop-suggestions"\)/);
+  assert.match(sdkSource, /JSON\.parse\(el\.textContent/);
+  assert.match(
+    sdkSource,
+    /function computeSuggestions\(\)[\s\S]*?return readEmbeddedSuggestions\(\) \?\? computeHeuristicSuggestions\(\);/,
+  );
+});
+
+void test("embedded suggestions are validated and capped before use", () => {
+  const fnStart = sdkSource.indexOf("function readEmbeddedSuggestions");
+  const fnEnd = sdkSource.indexOf("\n  }", fnStart);
+  const fnBody = sdkSource.slice(fnStart, fnEnd);
+  // Malformed JSON, a non-array, or non-string entries must not reach the review shell as-is.
+  assert.match(fnBody, /catch/);
+  assert.match(fnBody, /Array\.isArray\(parsed\)/);
+  assert.match(fnBody, /typeof item === "string"/);
+  assert.match(fnBody, /slice\(0, MAX_SUGGESTIONS\)/);
+});
+
+void test("suggestions are posted to the parent before inkloop:ready", () => {
+  const suggestionsIndex = sdkSource.indexOf('type: "inkloop:suggestions"');
+  const readyIndex = sdkSource.indexOf('type: "inkloop:ready"');
+  assert.ok(suggestionsIndex >= 0, "expected an inkloop:suggestions message");
+  assert.ok(readyIndex >= 0, "expected an inkloop:ready message");
+  assert.ok(
+    suggestionsIndex < readyIndex,
+    "suggestions should be posted no later than the ready signal that reveals them",
+  );
+  assert.match(sdkSource, /prompts:\s*computeSuggestions\(\)/);
+});
+
+void test("the heuristic fallback looks for headings, missing alt text, forms, and long paragraphs", () => {
+  const fnStart = sdkSource.indexOf("function computeHeuristicSuggestions");
+  const fnEnd = sdkSource.indexOf("\n  }", fnStart);
+  const fnBody = sdkSource.slice(fnStart, fnEnd);
+  assert.match(fnBody, /querySelectorAll\("h1, h2, h3"\)/);
+  assert.match(fnBody, /querySelectorAll\("img"\)/);
+  assert.match(fnBody, /getAttribute\("alt"\)/);
+  assert.match(fnBody, /querySelectorAll\("form"\)/);
+  assert.match(fnBody, /querySelectorAll\("p"\)/);
+  // Caps out at MAX_SUGGESTIONS so the shell never has to truncate a longer list itself.
+  assert.match(fnBody, /suggestions\.slice\(0, MAX_SUGGESTIONS\)/);
+});
+
+void test("the text-range picker's mouseup listener requires Sidenote (pickingElement) to be active", () => {
+  // Previously this listener only checked whether the current selection was non-collapsed and
+  // non-empty, so a native double/triple-click word selection opened the comment composer even
+  // with Sidenote off. It must gate on the same picking state the element-picker click handler
+  // uses, before ever inspecting window.getSelection().
+  const mouseupIndex = sdkSource.indexOf('addEventListener("mouseup"');
+  assert.ok(mouseupIndex >= 0, "expected the text-range picker's mouseup listener");
+  const selectionIndex = sdkSource.indexOf("window.getSelection()", mouseupIndex);
+  assert.ok(selectionIndex >= 0, "expected the mouseup listener to read window.getSelection()");
+  const guardMatch = /if \(!pickingElement \|\| pendingTarget\)\s*\n?\s*return;/.exec(
+    sdkSource.slice(mouseupIndex),
+  );
+  assert.ok(guardMatch, "expected the picking-state guard inside the mouseup listener");
+  const guardIndex = mouseupIndex + guardMatch.index;
+  assert.ok(
+    guardIndex < selectionIndex,
+    "the picking-state guard must run before the selection is ever inspected",
+  );
+});
+
+void test("window.inkloop.addNote exposes a public hook for artifact-authored JS to queue a general note", () => {
+  // Must exist as a real public entry point on window (distinct from the internal queueItem it
+  // wraps) so an artifact's own script - a decision-collection row's "send changes" handler - can
+  // call it directly, without reaching into the SDK's closured internals.
+  const hookIndex = sdkSource.indexOf("window.inkloop = {");
+  assert.ok(hookIndex >= 0, "expected window.inkloop to be assigned");
+  const addNoteIndex = sdkSource.indexOf("addNote(comment)", hookIndex);
+  assert.ok(addNoteIndex >= 0, "expected an addNote(comment) method on window.inkloop");
+  const bodyEnd = sdkSource.indexOf("};", addNoteIndex);
+  const body = sdkSource.slice(addNoteIndex, bodyEnd);
+  assert.match(body, /queueItem\(\{\s*kind:\s*"general"\s*\},\s*comment\)/);
+});
+
+void test("window.inkloop is only assigned after the standalone-load guard, not unconditionally", () => {
+  // window.inkloop must never exist when the artifact is opened directly outside a review session
+  // (the standalone-render invariant) - it has to sit after the `window === window.parent` early
+  // return the same way every other queue-mutating hook in this file already does.
+  const guardIndex = sdkSource.indexOf("window === window.parent");
+  assert.ok(guardIndex >= 0, "expected the standalone-load guard");
+  const hookIndex = sdkSource.indexOf("window.inkloop = {");
+  assert.ok(hookIndex >= 0, "expected window.inkloop to be assigned");
+  assert.ok(guardIndex < hookIndex, "window.inkloop must be assigned after the standalone-load guard");
+});
+
+void test("suggested prompts are capped at 2, prioritizing concrete actionable defects over the vaguer heading-explanation prompt", () => {
+  assert.match(sdkSource, /const MAX_SUGGESTIONS = 2;/);
+  const fnStart = sdkSource.indexOf("function computeHeuristicSuggestions");
+  const fnEnd = sdkSource.indexOf("\n  }", fnStart);
+  const fnBody = sdkSource.slice(fnStart, fnEnd);
+
+  // The alt-text/form/long-paragraph checks (concrete, actionable) must appear before the
+  // section-heading check (a vaguer "explain the reasoning" discussion starter) so the first
+  // MAX_SUGGESTIONS slots go to the most actionable prompts a reviewer actually sees.
+  const badImageIndex = fnBody.indexOf('querySelectorAll("img")');
+  const formIndex = fnBody.indexOf('querySelectorAll("form")');
+  const longParagraphIndex = fnBody.indexOf('querySelectorAll("p")');
+  const headingIndex = fnBody.indexOf('querySelectorAll("h1, h2, h3")');
+  assert.ok(badImageIndex >= 0 && formIndex >= 0 && longParagraphIndex >= 0 && headingIndex >= 0);
+  assert.ok(badImageIndex < headingIndex, "alt-text check should be prioritized over the heading prompt");
+  assert.ok(formIndex < headingIndex, "form check should be prioritized over the heading prompt");
+  assert.ok(
+    longParagraphIndex < headingIndex,
+    "long-paragraph check should be prioritized over the heading prompt",
+  );
+
+  // The generic fallback list is trimmed to the two most actionable entries - the vague
+  // "what's the reasoning behind the overall layout" prompt is gone.
+  assert.doesNotMatch(fnBody, /What's the reasoning behind the overall layout/);
+  assert.match(fnBody, /Is this accessible \(contrast, keyboard navigation, alt text\)\?/);
+  assert.match(fnBody, /Any way to simplify this further\?/);
+});

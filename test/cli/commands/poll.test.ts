@@ -1,0 +1,178 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { decode } from "@toon-format/toon";
+import { runPollCommand } from "../../../src/cli/commands/poll.js";
+import { loadServerConfig } from "../../../src/server/config.js";
+import { createInkloopServer, type InkloopServer } from "../../../src/server/create-server.js";
+import { endSession, hashArtifactPath, openOrResumeSession } from "../../../src/shared/session-store.js";
+import { appendFeedback } from "../../../src/shared/feedback-store.js";
+import { readAgentReplies } from "../../../src/shared/agent-reply-store.js";
+
+type WriteFn = typeof process.stdout.write;
+
+async function captureWrite(
+  stream: NodeJS.WriteStream,
+  fn: () => Promise<number>,
+): Promise<{ code: number; text: string }> {
+  const original: WriteFn = stream.write.bind(stream);
+  let text = "";
+  stream.write = (chunk: Uint8Array | string) => {
+    text += chunk.toString();
+    return true;
+  };
+  try {
+    const code = await fn();
+    return { code, text };
+  } finally {
+    stream.write = original;
+  }
+}
+
+/**
+ * Same isolation pattern as open.test.ts: a real server pre-started on a fixed test port so
+ * ensureServerRunning() finds it already healthy, plus a short pollTimeoutMs so the timeout
+ * branch (exercised indirectly by the mid-wait test below) doesn't slow the suite down.
+ */
+async function withTestEnvironment<T>(
+  fn: (ctx: { artifactDir: string; port: number }) => Promise<T>,
+): Promise<T> {
+  const stateRoot = await mkdtemp(path.join(os.tmpdir(), "inkloop-poll-cmd-test-state-"));
+  const artifactDir = await mkdtemp(path.join(os.tmpdir(), "inkloop-poll-cmd-test-artifact-"));
+  const port = 45000 + Math.floor(Math.random() * 1000);
+
+  const originalEnv = { ...process.env };
+  process.env["INKLOOP_STATE_DIR"] = stateRoot;
+  process.env["INKLOOP_HOST"] = "127.0.0.1";
+  process.env["INKLOOP_PORT"] = String(port);
+  process.env["INKLOOP_IDLE_TIMEOUT_MS"] = "0";
+  process.env["INKLOOP_POLL_TIMEOUT_MS"] = "300";
+
+  const config = loadServerConfig();
+  const instance: InkloopServer = createInkloopServer(config);
+  await instance.listening;
+
+  try {
+    return await fn({ artifactDir, port });
+  } finally {
+    await instance.close();
+    process.env = originalEnv;
+    await rm(stateRoot, { recursive: true, force: true });
+    await rm(artifactDir, { recursive: true, force: true });
+  }
+}
+
+void test("returns 1 with no session opened for the file", async () => {
+  await withTestEnvironment(async ({ artifactDir }) => {
+    const artifactPath = path.join(artifactDir, "artifact.html");
+    await writeFile(artifactPath, "<p>hi</p>", "utf8");
+
+    const { code, text } = await captureWrite(process.stderr, () => runPollCommand(artifactPath));
+    assert.equal(code, 1);
+    assert.match(text, /no session found/);
+  });
+});
+
+void test("returns queued feedback already present when the poll call is made", async () => {
+  await withTestEnvironment(async ({ artifactDir }) => {
+    const artifactPath = path.join(artifactDir, "artifact.html");
+    await writeFile(artifactPath, "<p>hi</p>", "utf8");
+    await openOrResumeSession(artifactPath);
+    const hash = hashArtifactPath(artifactPath);
+    await appendFeedback(hash, [
+      {
+        id: "item-1",
+        target: { kind: "general" },
+        comment: "pre-queued",
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+
+    const { code, text } = await captureWrite(process.stdout, () => runPollCommand(artifactPath));
+    assert.equal(code, 0);
+    const body = decode(text) as { items: Array<{ id: string; comment: string }>; next_step: string };
+    assert.equal(body.items.length, 1);
+    assert.equal(body.items[0]?.comment, "pre-queued");
+    assert.match(body.next_step, /inkloop poll/);
+  });
+});
+
+void test("blocks across an empty poll round-trip and returns once feedback arrives", async () => {
+  await withTestEnvironment(async ({ artifactDir }) => {
+    const artifactPath = path.join(artifactDir, "artifact.html");
+    await writeFile(artifactPath, "<p>hi</p>", "utf8");
+    await openOrResumeSession(artifactPath);
+    const hash = hashArtifactPath(artifactPath);
+
+    // Arrives after the first (300ms) server-side poll round times out empty, proving the CLI
+    // re-issued the request rather than giving up.
+    setTimeout(() => {
+      void appendFeedback(hash, [
+        {
+          id: "late-item",
+          target: { kind: "general" },
+          comment: "arrived after a timeout round",
+          createdAt: new Date().toISOString(),
+        },
+      ]);
+    }, 500);
+
+    const { code, text } = await captureWrite(process.stdout, () => runPollCommand(artifactPath));
+    assert.equal(code, 0);
+    const body = decode(text) as { items: Array<{ id: string }> };
+    assert.deepEqual(
+      body.items.map((i) => i.id),
+      ["late-item"],
+    );
+  });
+});
+
+void test("returns immediately with next_step once the session ends, even with no pending items", async () => {
+  await withTestEnvironment(async ({ artifactDir }) => {
+    const artifactPath = path.join(artifactDir, "artifact.html");
+    await writeFile(artifactPath, "<p>hi</p>", "utf8");
+    await openOrResumeSession(artifactPath);
+    await endSession(artifactPath, "user");
+
+    const { code, text } = await captureWrite(process.stdout, () => runPollCommand(artifactPath));
+    assert.equal(code, 0);
+    const body = decode(text) as {
+      items: unknown[];
+      ended: boolean;
+      endedBy: string;
+      next_step: string;
+    };
+    assert.deepEqual(body.items, []);
+    assert.equal(body.ended, true);
+    assert.equal(body.endedBy, "user");
+    assert.match(body.next_step, /--reopen/);
+  });
+});
+
+void test("--agent-reply posts a message before polling", async () => {
+  await withTestEnvironment(async ({ artifactDir }) => {
+    const artifactPath = path.join(artifactDir, "artifact.html");
+    await writeFile(artifactPath, "<p>hi</p>", "utf8");
+    await openOrResumeSession(artifactPath);
+    const hash = hashArtifactPath(artifactPath);
+    await appendFeedback(hash, [
+      {
+        id: "item-1",
+        target: { kind: "general" },
+        comment: "next round",
+        createdAt: new Date().toISOString(),
+      },
+    ]);
+
+    const { code } = await captureWrite(process.stdout, () =>
+      runPollCommand(artifactPath, { agentReply: "fixed the spacing issue" }),
+    );
+    assert.equal(code, 0);
+
+    const replies = await readAgentReplies(hash);
+    assert.equal(replies.length, 1);
+    assert.equal(replies[0]?.message, "fixed the spacing issue");
+  });
+});

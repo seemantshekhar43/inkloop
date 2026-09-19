@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+.claude/
+
+# Local-only scratch space for ad hoc testing/comparison artifacts - kept out of the repo on
+# purpose, never committed.
+local-testing/

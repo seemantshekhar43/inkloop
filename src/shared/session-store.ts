@@ -1,0 +1,224 @@
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+export type SessionStatus = "opened" | "agent-ended" | "user-ended";
+
+/**
+ * Human-readable guidance for what an agent should do next, given a session's terminal status.
+ * Shared by the poll route's "ended" response and `inkloop end`'s own output (issue
+ * #9) so both surfaces describe the same reopen semantics in the same words. Returns undefined
+ * for "opened" — there's nothing to guide the agent about while a session is still active.
+ */
+export function nextStepGuidance(status: SessionStatus): string | undefined {
+  switch (status) {
+    case "agent-ended":
+      return "You ended this session. A later `inkloop <file>` may reopen it freely if further review is needed.";
+    case "user-ended":
+      return "The user ended this session from the browser. A later `inkloop <file>` will refuse to reopen it unless run with --reopen.";
+    case "opened":
+      return undefined;
+  }
+}
+
+/**
+ * Guidance for `inkloop <file>` once a session URL has been printed. Same text
+ * whether the session was freshly opened or resumed — the next action is always the same, and
+ * unlike nextStepGuidance() above this isn't keyed off session status at all.
+ */
+export const OPEN_NEXT_STEP =
+  "Share this URL with the human if they don't already have it, then run `inkloop poll <file>` " +
+  "and leave it running (foreground, or a tracked background job with a guaranteed callback) " +
+  "until feedback arrives.";
+
+/**
+ * Guidance for `inkloop poll <file>` once it returns a feedback batch and the session is still
+ * open. The ended case reuses nextStepGuidance() instead, via the same `next_step`
+ * field — see poll.ts.
+ */
+export const POLL_FEEDBACK_NEXT_STEP =
+  'Revise the artifact based on this feedback, then run `inkloop poll <file> --agent-reply ' +
+  '"<one-line summary of what changed>"` for the next round.';
+
+export interface SessionRecord {
+  /** Absolute path of the artifact this session reviews. */
+  filePath: string;
+  status: SessionStatus;
+  /** ISO-8601 timestamps. */
+  createdAt: string;
+  updatedAt: string;
+}
+
+export class SessionNotFoundError extends Error {
+  constructor(filePath: string) {
+    super(`No session found for ${filePath}`);
+    this.name = "SessionNotFoundError";
+  }
+}
+
+export class SessionCorruptError extends Error {
+  constructor(sessionFile: string, cause: unknown) {
+    super(`Session file is corrupt and cannot be read: ${sessionFile}`, { cause });
+    this.name = "SessionCorruptError";
+  }
+}
+
+export type OpenSessionResult =
+  | { outcome: "opened"; record: SessionRecord }
+  | { outcome: "resumed"; record: SessionRecord }
+  | { outcome: "refused"; reason: "user-ended-without-reopen"; record: SessionRecord };
+
+/** Default root for all session state. Overridable so tests never touch the real home dir. */
+export function defaultStateRoot(env: NodeJS.ProcessEnv = process.env): string {
+  return env["INKLOOP_STATE_DIR"]?.trim() || path.join(os.homedir(), ".inkloop");
+}
+
+/**
+ * Derives a filesystem-safe, deterministic session key from an absolute artifact path. We hash
+ * rather than use the raw path so session directories never contain path separators, spaces, or
+ * characters invalid on a given filesystem, and so the same artifact path always maps to the
+ * same session regardless of how it's later referenced.
+ *
+ * Takes an already-absolute path — callers resolve relative paths via resolveArtifactPath()
+ * first, so hashing has no implicit dependency on the caller's cwd.
+ */
+export function hashArtifactPath(absolutePath: string): string {
+  return createHash("sha256").update(absolutePath).digest("hex").slice(0, 16);
+}
+
+export function sessionDirByHash(hash: string, stateRoot: string = defaultStateRoot()): string {
+  return path.join(stateRoot, hash);
+}
+
+export function sessionDir(absolutePath: string, stateRoot: string = defaultStateRoot()): string {
+  return sessionDirByHash(hashArtifactPath(absolutePath), stateRoot);
+}
+
+function isNodeError(err: unknown): err is NodeJS.ErrnoException {
+  return err instanceof Error && "code" in err;
+}
+
+/**
+ * Reads a session record directly by its hash, without knowing the artifact path in advance.
+ * This is what lets the HTTP server serve `/session/<hash>/...` routes safely: the hash is an
+ * opaque key chosen server-side when the session was created, never a client-supplied filesystem
+ * path, so there is no path-traversal surface here even though it ultimately resolves to a file
+ * read (see create-server.ts's artifact route).
+ */
+export async function readSessionRecordByHash(
+  hash: string,
+  stateRoot: string = defaultStateRoot(),
+): Promise<SessionRecord | undefined> {
+  const file = path.join(sessionDirByHash(hash, stateRoot), "session.json");
+  let raw: string;
+  try {
+    raw = await readFile(file, "utf8");
+  } catch (err) {
+    if (isNodeError(err) && err.code === "ENOENT") return undefined;
+    throw err;
+  }
+  try {
+    return JSON.parse(raw) as SessionRecord;
+  } catch (err) {
+    throw new SessionCorruptError(file, err);
+  }
+}
+
+/**
+ * Reads the session record for an artifact path, or undefined if no session has ever been
+ * opened for it. Throws SessionCorruptError rather than silently treating malformed state as
+ * "no session" — a corrupt file masking as a fresh session could let a user-ended session be
+ * silently reopened, which is a data-integrity concern worth failing loudly on.
+ */
+export async function readSessionRecord(
+  absolutePath: string,
+  stateRoot: string = defaultStateRoot(),
+): Promise<SessionRecord | undefined> {
+  return readSessionRecordByHash(hashArtifactPath(absolutePath), stateRoot);
+}
+
+/**
+ * Writes the session record atomically: write to a temp file in the same directory, then
+ * rename over the target. A crash or concurrent read mid-write can never observe a
+ * partially-written session.json this way.
+ */
+async function writeSessionRecordAtomic(
+  record: SessionRecord,
+  stateRoot: string = defaultStateRoot(),
+): Promise<void> {
+  const dir = sessionDir(record.filePath, stateRoot);
+  await mkdir(dir, { recursive: true });
+  const target = path.join(dir, "session.json");
+  const tmp = path.join(dir, `.session.json.${randomUUID()}.tmp`);
+  await writeFile(tmp, JSON.stringify(record, null, 2), "utf8");
+  await rename(tmp, target);
+}
+
+/**
+ * Opens a new session or resumes an existing one. Reopen semantics: a session the user ended
+ * from the browser refuses to reopen unless the caller explicitly passes reopen: true.
+ * Agent-ended and never-opened sessions always resume/open freely.
+ */
+export async function openOrResumeSession(
+  absolutePath: string,
+  options: { reopen?: boolean; stateRoot?: string } = {},
+): Promise<OpenSessionResult> {
+  const stateRoot = options.stateRoot ?? defaultStateRoot();
+  const existing = await readSessionRecord(absolutePath, stateRoot);
+  const now = new Date().toISOString();
+
+  if (!existing) {
+    const record: SessionRecord = {
+      filePath: absolutePath,
+      status: "opened",
+      createdAt: now,
+      updatedAt: now,
+    };
+    await writeSessionRecordAtomic(record, stateRoot);
+    return { outcome: "opened", record };
+  }
+
+  if (existing.status === "user-ended" && !options.reopen) {
+    return { outcome: "refused", reason: "user-ended-without-reopen", record: existing };
+  }
+
+  const record: SessionRecord = { ...existing, status: "opened", updatedAt: now };
+  await writeSessionRecordAtomic(record, stateRoot);
+  return { outcome: "resumed", record };
+}
+
+/**
+ * Ends a session. Throws SessionNotFoundError if no session was ever opened for this path —
+ * ending a session that doesn't exist is a caller bug, not a state worth silently accepting.
+ *
+ * A user-ended session is terminal against agent-initiated ends: once status is 'user-ended',
+ * a later endSession(path, 'agent') call is a no-op on status so it can't downgrade the
+ * reopen-refusal guarantee back to 'agent-ended'.
+ */
+export async function endSession(
+  absolutePath: string,
+  endedBy: "agent" | "user",
+  stateRoot: string = defaultStateRoot(),
+): Promise<SessionRecord> {
+  const existing = await readSessionRecord(absolutePath, stateRoot);
+  if (!existing) throw new SessionNotFoundError(absolutePath);
+
+  const status =
+    existing.status === "user-ended" ? "user-ended" : endedBy === "agent" ? "agent-ended" : "user-ended";
+  const record: SessionRecord = {
+    ...existing,
+    status,
+    updatedAt: new Date().toISOString(),
+  };
+  await writeSessionRecordAtomic(record, stateRoot);
+  return record;
+}
+
+/** Removes all session state for an artifact path. Used by tests; not exposed via the CLI in v1. */
+export async function deleteSession(
+  absolutePath: string,
+  stateRoot: string = defaultStateRoot(),
+): Promise<void> {
+  await rm(sessionDir(absolutePath, stateRoot), { recursive: true, force: true });
+}
